@@ -50,7 +50,7 @@ if(MINGW AND TARGET rexruntime)
     target_link_options(rexruntime PRIVATE -Wl,--export-all-symbols)
 endif()
 
-add_executable(tekken6 src/main.cpp src/tekken6_guest_hooks.cpp)
+add_executable(tekken6 src/main.cpp src/tekken6_guest_hooks.cpp src/internal_resolution.cpp)
 target_compile_options(tekken6 PRIVATE -mssse3)
 if(WIN32)
     target_sources(tekken6 PRIVATE src/tekken6_crash_win.cpp)

@@ -28,6 +28,18 @@ address = 0x8251C1FC
 name = "Tekken6StartupWait"
 registers = ["r11"]
 
+# Allow the Windows launcher to select the guest's internal 3D render size.
+# These run before the two guest stores that initialize/reset 1024x576.
+[[midasm_hook]]
+address = 0x82219DB4
+name = "ApplyTekkenInternalResolution"
+registers = ["r11", "r10"]
+
+[[midasm_hook]]
+address = 0x82219A28
+name = "ApplyTekkenInternalResolution"
+registers = ["r11", "r10"]
+
 # RexGlue's validation reports these branch targets as tail/secondary
 # functions, while the existing independent XenonRecomp pass already proves
 # each is a real emitted function start in this exact XEX.

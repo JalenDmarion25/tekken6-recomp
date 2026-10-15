@@ -118,6 +118,7 @@ def main() -> None:
         "TEKKEN 6 RECOMPILED WINDOWS BUILD\n\n"
         "Copy this folder to Windows. Keep bin and game beside the launchers.\n"
         "tekken6.exe starts the D3D12 ROV build.\n"
+        "Each launcher asks for internal 3D resolution: 640x360, 768x432, or original 1024x576.\n"
         "tekken6_vulkan.exe selects Vulkan FSI and requires fragment shader interlock.\n"
         "tekken6_vulkan_fbo.exe selects the experimental Vulkan framebuffer path.\n"
         "tekken6_late_depth.exe and tekken6_fused_resolve.exe enable opt-in D3D12 ROV paths.\n"

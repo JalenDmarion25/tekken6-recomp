@@ -30,6 +30,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
                 ERROR_FILE_NOT_FOUND);
   }
 
+  const int resolution_choice = MessageBoxW(
+      nullptr,
+      L"Choose the internal 3D render resolution. The game window stays at its normal size.\n\n"
+      L"Yes: 640 x 360 (lowest pixel cost)\n"
+      L"No: 768 x 432 (balanced)\n"
+      L"Cancel: 1024 x 576 (original)",
+      L"Tekken 6 render resolution", MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON1);
+  const wchar_t* internal_resolution = resolution_choice == IDYES
+      ? L"640x360"
+      : resolution_choice == IDNO ? L"768x432" : L"1024x576";
+
   SYSTEMTIME now;
   GetLocalTime(&now);
   wchar_t run_name[96];
@@ -53,6 +64,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
       {L"REX_FULLSCREEN", L"0"},
       {L"REX_LOG_LEVEL", L"off"},
       {L"TEKKEN6_CRASH_DIR", crash_dir.c_str()},
+      {L"TEKKEN6_INTERNAL_RESOLUTION", internal_resolution},
   };
   for (const auto& setting : settings) {
     if (!SetEnvironmentVariableW(setting.name, setting.value)) {
