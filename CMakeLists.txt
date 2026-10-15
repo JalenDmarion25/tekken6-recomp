@@ -25,9 +25,7 @@ include(generated/rexglue.cmake)
 add_subdirectory(tools/xdvdfs)
 
 if(MINGW AND TARGET rexgpu-xenos)
-    # The plugin loader expects rexgpu-xenosrd.dll on Windows. MinGW's
-    # default lib prefix would stage a different file and leave an old
-    # manually copied plugin active next to the executable.
+    # Use the unprefixed module filename expected by the Windows plugin loader.
     set_target_properties(rexgpu-xenos PROPERTIES PREFIX "")
 endif()
 
@@ -60,6 +58,15 @@ if(WIN32)
     target_link_options(tekken6 PRIVATE -municode)
 endif()
 rexglue_setup_target(tekken6 GPU_PLUGINS xenos)
+# Stage the dynamically loaded GPU plugin whenever the host target is built.
+add_custom_target(tekken6_stage_gpu_plugin
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "$<TARGET_FILE:rexgpu-xenos>"
+        "${CMAKE_CURRENT_BINARY_DIR}/$<TARGET_FILE_NAME:rexgpu-xenos>"
+    DEPENDS rexgpu-xenos
+    VERBATIM
+)
+add_dependencies(tekken6 tekken6_stage_gpu_plugin)
 # Generated PPC code makes frequent explicit fused-multiply-add calls. FMA3
 # lowers these to hardware instructions while keeping implicit contraction off.
 if(TEKKEN6_ENABLE_FMA3)
@@ -88,12 +95,10 @@ if(WIN32)
         endif()
     endfunction()
 
-    # Low-overhead play/performance launcher. It keeps the best-known ROV
-    # rendering path with persistent caches and disabled diagnostic tracing.
+    # Standard Windows launcher with persistent caches.
     tekken6_add_windows_launcher(tekken6_low_overhead)
     target_compile_definitions(tekken6_low_overhead PRIVATE TEKKEN6_LOW_OVERHEAD=1)
-    # Opt-in D3D12 ROV performance paths. The default runtime configuration
-    # keeps both disabled until they are validated on representative workloads.
+    # Optional D3D12 ROV rendering paths.
     tekken6_add_windows_launcher(tekken6_late_depth)
     target_compile_definitions(tekken6_late_depth PRIVATE
         TEKKEN6_LOW_OVERHEAD=1 TEKKEN6_LATE_DEPTH=1)

@@ -1,7 +1,4 @@
-# First-pass RexGlue codegen configuration for the retail Tekken 6 XEX.
-# This intentionally carries only validated structural hints from the existing
-# XenonRecomp pass. Runtime approximations, decoded-bank remaps, forced GPU
-# readiness, and guessed callbacks are deliberately absent.
+# Code generation configuration for the retail Tekken 6 XEX.
 
 # Callback loaded from a 20-byte record and dispatched through CTR.
 indirect_calls = [0x82390788]
@@ -16,13 +13,11 @@ ctr_as_local = false
 xer_as_local = false
 reserved_as_local = false
 cr_as_local = false
-# Keep the shared register context used by the known-working Windows build.
-# Localizing these registers needs separate validation of helper/tail calls.
+# Share register context across guest calls and tail calls.
 non_argument_as_local = false
 non_volatile_as_local = false
 
-# Preserve the working build's scheduler yield at the queue wait's backward
-# branch. Keeping this in codegen configuration survives clean regeneration.
+# Yield at the startup queue wait's backward branch.
 [[midasm_hook]]
 address = 0x8251C1FC
 name = "Tekken6StartupWait"
@@ -176,13 +171,12 @@ address = 0x826B12B4
 register = 11
 labels = [
   0x826B1494, 0x826B1784, 0x826B12B8, 0x826B1784, 0x826B1494, 0x826B1784, 0x826B1494, 0x826B1784,
-  0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B13A0, 0x826B1784,
-  0x826B1784, 0x826B1784, 0x826B1784, 0x826B15D4, 0x826B1784, 0x826B1324, 0x826B1784, 0x826B1784,
-  0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B14A0, 0x826B1784, 0x826B12C8, 0x826B15C4,
-  0x826B14A0, 0x826B14A0, 0x826B14A0, 0x826B1784, 0x826B15C4, 0x826B1784, 0x826B1784, 0x826B1784,
-  0x826B1458, 0x826B160C, 0x826B15D0, 0x826B1784, 0x826B1784, 0x826B13B0, 0x826B1784, 0x826B15C8,
-  # Dispatch index 0x32 is lowercase 's', as in the working generated source.
-  0x826B1784, 0x826B1784, 0x826B13B0,
+  0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784,
+  0x826B1784, 0x826B1784, 0x826B13A0, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B15D4,
+  0x826B1784, 0x826B1324, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784,
+  0x826B14A0, 0x826B1784, 0x826B12C8, 0x826B15C4, 0x826B14A0, 0x826B14A0, 0x826B14A0, 0x826B1784,
+  0x826B15C4, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1784, 0x826B1458, 0x826B160C, 0x826B15D0,
+  0x826B1784, 0x826B1784, 0x826B13B0, 0x826B1784, 0x826B15C8, 0x826B1784, 0x826B1784, 0x826B15DC,
 ]
 
 # The independent XenonRecomp pass proved these six retail jump tables are

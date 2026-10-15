@@ -1,5 +1,4 @@
-# Isolated Tekken 6 RexGlue experiment. Keep this separate from the proven
-# XenonRecomp host until codegen and the first raw-runtime boot are measured.
+# Tekken 6 ReXGlue project.
 
 [project]
 name = "tekken6"

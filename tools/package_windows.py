@@ -44,8 +44,12 @@ def main() -> None:
     build = args.build_dir.resolve()
     output = args.output.resolve()
 
+    gpu_plugin = build / "rexgpu-xenos.dll"
+    if not gpu_plugin.is_file():
+        raise SystemExit(f"Missing Windows GPU plugin: {gpu_plugin}")
     binary_dir = output / "bin"
     binary_dir.mkdir(parents=True, exist_ok=True)
+    package_executables = [binary_dir / "tekken6.exe"]
     for name in ("tekken6.exe", "librexruntime.dll", "rexgpu-xenos.dll"):
         copy_if_changed(build / name, binary_dir / name)
     launchers = {
@@ -59,13 +63,13 @@ def main() -> None:
         built = build / source
         if built.is_file():
             copy_if_changed(built, output / destination)
+            package_executables.append(output / destination)
 
     search_dirs = [build, args.llvm_mingw_root / "x86_64-w64-mingw32/bin"]
     objdump = shutil.which("x86_64-w64-mingw32-objdump")
     if not objdump:
         raise SystemExit("x86_64-w64-mingw32-objdump is required to check DLL dependencies")
-    pending = list(binary_dir.glob("*.dll")) + [binary_dir / "tekken6.exe"]
-    pending.extend(path for path in output.glob("*.exe"))
+    pending = list(binary_dir.glob("*.dll")) + package_executables
     checked = set()
     while pending:
         executable = pending.pop()
@@ -139,10 +143,9 @@ def main() -> None:
         text=True,
     ).strip()
     hashes = {}
-    for source in sorted(output.rglob("*")):
-        if source.is_file() and source.suffix.lower() in {".exe", ".dll"}:
-            with source.open("rb") as stream:
-                hashes[str(source.relative_to(output))] = hashlib.file_digest(stream, "sha256").hexdigest()
+    for source in sorted(checked):
+        with source.open("rb") as stream:
+            hashes[str(source.relative_to(output))] = hashlib.file_digest(stream, "sha256").hexdigest()
     manifest = {
         "recomp_commit": revision,
         "sdk_commit": sdk_revision,

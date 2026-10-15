@@ -11,7 +11,12 @@
 
 # Local logs and editor files
 /logs/
+/cache/
+/crashes/
 *.log
+*.dmp
+__pycache__/
+*.pyc
 .DS_Store
 Thumbs.db
 

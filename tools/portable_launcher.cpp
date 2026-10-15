@@ -99,7 +99,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
 
   const struct { const wchar_t* name; const wchar_t* value; } settings[] = {
       {L"TEKKEN6_YIELD_STARTUP_SPIN", L"1"},
-      {L"TEKKEN6_FRAME_PROBE_ATTEMPTS", L"0"},
       {L"REX_FULLSCREEN", L"0"},
       {L"REX_LOG_LEVEL", L"off"},
       {L"TEKKEN6_CRASH_DIR", crash_dir.c_str()},
@@ -109,18 +108,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
   for (const auto& setting : settings) {
     if (!SetEnvironmentVariableW(setting.name, setting.value)) {
       return Fail(L"Cannot configure the game process.");
-    }
-  }
-  const wchar_t* disabled_settings[] = {
-      L"TEKKEN6_CAPTURE_ALL", L"TEKKEN6_CAPTURE_CONTINUOUS", L"TEKKEN6_TRACE_IO",
-      L"TEKKEN6_TRACE_QUEUE", L"TEKKEN6_TRACE_MOVIE", L"TEKKEN6_TRACE_TITLE_STATE",
-      L"TEKKEN6_TRACE_STARTUP_GATE", L"TEKKEN6_TRACE_OUTPUT",
-      L"TEKKEN6_TRACE_RENDERING", L"TEKKEN6_TRACE_RENDERING_DETAIL",
-      L"TEKKEN6_TRACE_RENDERING_DETAIL_INTERVAL",
-  };
-  for (const auto* setting : disabled_settings) {
-    if (!SetEnvironmentVariableW(setting, nullptr)) {
-      return Fail(L"Cannot disable diagnostic tracing.");
     }
   }
 

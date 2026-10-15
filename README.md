@@ -6,9 +6,14 @@ generated code come from a user-provided XEX and are kept out of version control
 ## Windows build
 
 For a Linux-hosted Windows build, use an extracted LLVM-MinGW distribution.
-Generate guest code from your own game XEX, then configure the Windows build:
+Initialize the SDK submodule and apply the repository patch before configuring
+the native SDK. Generate guest code from your own game XEX, then configure the
+Windows build:
 
 ```sh
+git submodule update --init --recursive
+python3 tools/apply_rexglue_patches.py
+
 cmake -S third_party/rexglue-sdk -B build/sdk-native -G Ninja \
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-mssse3 \
@@ -34,6 +39,7 @@ python3 tools/package_windows.py --build-dir build/windows-llvm \
 
 The package tool checks PE imports, stages required compiler runtime DLLs, and
 writes a `build-info.json` manifest with source revisions and binary hashes.
+SDK changes are maintained in the [project patch](patches/rexglue/README.md).
 CMake defaults to `Release` when no build type is selected. Generated guest
 code uses FMA3 by default for faster explicit fused operations; the resulting
 executable requires an FMA3-capable CPU. Set `-DTEKKEN6_ENABLE_FMA3=OFF` for a
@@ -52,15 +58,16 @@ original offscreen size.
 ## Rendering paths
 
 `tekken6.exe` selects D3D12 ROV. The runtime includes no-blend shader
-specialization and opt-in late-depth and fused RGBA8 resolve paths; unsupported
-draws and resolves continue through the general implementation. The optional
-late-depth and fused-resolve launchers enable those paths individually.
+specialization, ROV sample-count variants, and direct RGBA8 packing for known
+targets. Unsupported states retain the general shader path.
+Late-depth and fused RGBA8 resolves are available through their optional
+launchers.
 
 `tekken6_vulkan.exe` selects Vulkan fragment shader interlock (FSI). It requires
 a Vulkan device and driver that expose fragment shader interlock. The explicit
 request fails if the extension is unavailable. `tekken6_vulkan_fbo.exe` selects
 the experimental framebuffer path, which does not require interlock.
 
-The launcher keeps user saves, shader caches, and per-run logs in the package
+The launcher keeps user saves, shader caches, and crash reports in the package
 directory. Game files and generated recompilation sources are local inputs and
 must not be committed.
