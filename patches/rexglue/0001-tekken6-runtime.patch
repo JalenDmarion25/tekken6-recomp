@@ -329,7 +329,7 @@ index ac6b056e5b4d43b07b148f5e26764970f9150db0..e3b6c58d30470f77acf474d91b6d2ace
  
  }  // namespace rex::graphics
 diff --git a/include/rex/graphics/pipeline/shader/dxbc_translator.h b/include/rex/graphics/pipeline/shader/dxbc_translator.h
-index 3b0fd618aa8cc701fcff80ef23e3263eef91bfb4..df91a9df17e34e6ed8f8af5bc55892211e7b6302 100644
+index 3b0fd618aa8cc701fcff80ef23e3263eef91bfb4..b61b5235a5bf8ae8172230015a44ad4e8c67b7cb 100644
 --- a/include/rex/graphics/pipeline/shader/dxbc_translator.h
 +++ b/include/rex/graphics/pipeline/shader/dxbc_translator.h
 @@ -111,7 +111,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
@@ -337,7 +337,7 @@ index 3b0fd618aa8cc701fcff80ef23e3263eef91bfb4..df91a9df17e34e6ed8f8af5bc5589221
      // the previous layout, invalidate the pipeline storages by increasing this
      // version number (0xYYYYMMDD)!
 -    static constexpr uint32_t kVersion = 0x20260226;
-+    static constexpr uint32_t kVersion = 0x20261018;
++    static constexpr uint32_t kVersion = 0x20261019;
  
      enum class DepthStencilMode : uint32_t {
        kNoModifiers,
@@ -2080,7 +2080,7 @@ index 2c31a0e865855fe48e9fe6808e3f49c0ee4367e5..d6a00d2bc59e0287c6b4fad30514f1e8
    is_depth_only_pixel_shader_ = false;
    return translation.translated_binary();
 diff --git a/src/graphics/pipeline/shader/dxbc_translator_om.cpp b/src/graphics/pipeline/shader/dxbc_translator_om.cpp
-index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d2b3e0b61 100644
+index a7d508a9e0db4742523689a8437d0cef98069dd3..db1407589958ef747e0d3deb07f668dc100d5804 100644
 --- a/src/graphics/pipeline/shader/dxbc_translator_om.cpp
 +++ b/src/graphics/pipeline/shader/dxbc_translator_om.cpp
 @@ -23,7 +23,11 @@ namespace rex::graphics {
@@ -2882,6 +2882,13 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
 +        // sample_temp.w = depth difference less than 0
 +        a_.OpILT(sample_temp_w_dest, sample_temp_z_src, dxbc::Src::LI(0));
 +        // Choose the passed depth function bits for "less" or for "greater".
++        // sample_temp.x = old depth/stencil
++        // sample_temp.y = old depth
++        // sample_temp.z = depth difference
++        // sample_temp.w = depth function passed bits for "less" or "greater"
++        a_.OpMovC(sample_temp_w_dest, sample_temp_w_src, dxbc::Src::LU(kSysFlag_ROVDepthPassIfLess),
++                  dxbc::Src::LU(kSysFlag_ROVDepthPassIfGreater));
++        // Do the "equal" testing.
          // sample_temp.x = old depth/stencil
 -        // sample_temp.y = read-masked stencil reference
 -        a_.OpAnd(sample_temp_y_dest,
@@ -2892,22 +2899,15 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
 -                 stencil_read_mask_src);
 -        // Read-mask the old stencil value (also dropping the depth bits).
 +        // sample_temp.y = old depth
-+        // sample_temp.z = depth difference
-+        // sample_temp.w = depth function passed bits for "less" or "greater"
-+        a_.OpMovC(sample_temp_w_dest, sample_temp_w_src, dxbc::Src::LU(kSysFlag_ROVDepthPassIfLess),
-+                  dxbc::Src::LU(kSysFlag_ROVDepthPassIfGreater));
-+        // Do the "equal" testing.
-         // sample_temp.x = old depth/stencil
--        // sample_temp.y = read-masked stencil reference
--        // sample_temp.z = read-masked old stencil
--        a_.OpAnd(sample_temp_z_dest, sample_temp_x_src, stencil_read_mask_src);
-+        // sample_temp.y = old depth
 +        // sample_temp.z = depth function passed bits
 +        // sample_temp.w = free
 +        a_.OpMovC(sample_temp_z_dest, sample_temp_z_src, sample_temp_w_src,
 +                  dxbc::Src::LU(kSysFlag_ROVDepthPassIfEqual));
 +        // Mask the resulting bits with the ones that should pass.
-+        // sample_temp.x = old depth/stencil
+         // sample_temp.x = old depth/stencil
+-        // sample_temp.y = read-masked stencil reference
+-        // sample_temp.z = read-masked old stencil
+-        a_.OpAnd(sample_temp_z_dest, sample_temp_x_src, stencil_read_mask_src);
 +        // sample_temp.y = old depth
 +        // sample_temp.z = masked depth function passed bits
 +        a_.OpAnd(sample_temp_z_dest, sample_temp_z_src, LoadFlagsSystemConstant());
@@ -2916,13 +2916,13 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
 -      a_.OpEndIf();
 -      // Get the difference between the stencil reference and the old stencil,
 -      // > 0 - greater, == 0 - equal, < 0 - less.
-+      // Check if depth test has passed.
-       // sample_temp.x = old depth/stencil
+-      // sample_temp.x = old depth/stencil
 -      // sample_temp.y = stencil difference
 -      // sample_temp.z = free
 -      a_.OpIAdd(sample_temp_y_dest, sample_temp_y_src, -sample_temp_z_src);
 -      // Check if the stencil is "less" or "greater or equal".
--      // sample_temp.x = old depth/stencil
++      // Check if depth test has passed.
+       // sample_temp.x = old depth/stencil
 -      // sample_temp.y = stencil difference
 -      // sample_temp.z = stencil difference less than 0
 -      a_.OpILT(sample_temp_z_dest, sample_temp_y_src, dxbc::Src::LI(0));
@@ -3565,7 +3565,20 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
    }
  
    if (ROV_IsDepthStencilEarly()) {
-@@ -1076,6 +1169,15 @@ void DxbcShaderTranslator::ROV_UnpackColor(uint32_t rt_index, uint32_t packed_te
+@@ -1051,8 +1144,10 @@ void DxbcShaderTranslator::ROV_DepthStencilTest() {
+     a_.OpRetC(false, dxbc::Src::R(temp, dxbc::Src::kXXXX));
+   }
+ 
+-  // Close the large depth/stencil conditional.
+-  a_.OpEndIf();
++  // Disabled and Never profiles don't open the runtime depth/stencil check.
++  if (depth_profile != 1 && depth_profile != 2) {
++    a_.OpEndIf();
++  }
+ 
+   // Release temp.
+   PopSystemTemp();
+@@ -1076,6 +1171,15 @@ void DxbcShaderTranslator::ROV_UnpackColor(uint32_t rt_index, uint32_t packed_te
    // the same as color_temp, the packed color won't be touched.
    a_.OpMov(dxbc::Dest::R(color_temp, 0b1100), dxbc::Src::LF(0.0f, 0.0f, 0.0f, 1.0f));
  
@@ -3581,7 +3594,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
    // Choose the packing based on the render target's format.
    a_.OpSwitch(LoadSystemConstant(
        SystemConstants::Index::kEdramRTFormatFlags,
-@@ -1221,6 +1323,19 @@ void DxbcShaderTranslator::ROV_PackPreClampedColor(uint32_t rt_index, uint32_t c
+@@ -1221,6 +1325,19 @@ void DxbcShaderTranslator::ROV_PackPreClampedColor(uint32_t rt_index, uint32_t c
    // Break register dependency after 32bpp cases.
    a_.OpMov(dxbc::Dest::R(packed_temp, 1 << (packed_temp_components + 1)), dxbc::Src::LU(0));
  
@@ -3601,7 +3614,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
    // Choose the packing based on the render target's format.
    a_.OpSwitch(LoadSystemConstant(
        SystemConstants::Index::kEdramRTFormatFlags,
-@@ -1751,46 +1866,69 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
+@@ -1751,46 +1868,69 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
    uint32_t coverage_temp = edram_rov_used_ ? system_temp_rov_params_ : temp;
    uint32_t coverage_temp_component = edram_rov_used_ ? 0 : 2;
  
@@ -3687,11 +3700,11 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
      a_.OpElse();
 -    CompletePixelShader_AlphaToMaskSample(true, (!edram_rov_used_ && msaa_2x_supported_) ? 1 : 0,
 -                                          0.5f, temp_x_src, 1.0f / 8.0f, coverage_temp,
--                                          coverage_temp_component, temp, 1);
--    CompletePixelShader_AlphaToMaskSample(false, edram_rov_used_ ? 1 : (msaa_2x_supported_ ? 0 : 3),
--                                          1.0f, temp_x_src, 1.0f / 8.0f, coverage_temp,
 +    CompletePixelShader_AlphaToMaskSample(true, 0, 1.0f, temp_x_src, 1.0f / 4.0f, coverage_temp,
                                            coverage_temp_component, temp, 1);
+-    CompletePixelShader_AlphaToMaskSample(false, edram_rov_used_ ? 1 : (msaa_2x_supported_ ? 0 : 3),
+-                                          1.0f, temp_x_src, 1.0f / 8.0f, coverage_temp,
+-                                          coverage_temp_component, temp, 1);
 -    // Close the 4x check.
 +    // Close the 2x/4x check.
      a_.OpEndIf();
@@ -3705,7 +3718,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
  
    // Check if any sample is still covered and return to avoid unneeded work (the
    // driver's shader compiler may place return after a discard, but it will
-@@ -1801,8 +1939,10 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
+@@ -1801,8 +1941,10 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
      // which passed alpha to coverage, but not stencil test, and the stencil
      // buffer needs to be modified - in this case, samples would be dropped in
      // 0:3, but not in 4:7).
@@ -3718,7 +3731,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
      a_.OpRetC(false, temp_x_src);
    } else {
      dxbc::Src coverage_src(dxbc::Src::R(coverage_temp, coverage_temp_component));
-@@ -1818,6 +1958,9 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
+@@ -1818,6 +1960,9 @@ void DxbcShaderTranslator::CompletePixelShader_AlphaToMask() {
  }
  
  void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
@@ -3728,7 +3741,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
    uint32_t temp = PushSystemTemp();
    dxbc::Dest temp_x_dest(dxbc::Dest::R(temp, 0b0001));
    dxbc::Src temp_x_src(dxbc::Src::R(temp, dxbc::Src::kXXXX));
-@@ -1833,8 +1976,9 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -1833,8 +1978,9 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
    // Do late depth/stencil test (which includes writing) if needed or deferred
    // depth writing.
    if (ROV_IsDepthStencilEarly()) {
@@ -3739,7 +3752,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
        // Get if need to write to temp.x.
        // temp.x = whether the depth sample needs to be written.
        a_.OpAnd(temp_x_dest, dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
-@@ -1856,13 +2000,14 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -1856,13 +2002,14 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
        // Go to the next sample (samples are at +0, +(80*scale_x), +1,
        // +(80*scale_x+1), so need to do +(80*scale_x), -(80*scale_x-1),
        // +(80*scale_x) and -(80*scale_x+1) after each sample).
@@ -3756,7 +3769,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
      ROV_DepthStencilTest();
    }
  
-@@ -1874,7 +2019,8 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -1874,7 +2021,8 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
      // skip color writing completely in this case.
      // temp.x = whether any sample is still covered.
      a_.OpAnd(temp_x_dest, dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
@@ -3766,7 +3779,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
      // temp.x = free.
      a_.OpRetC(false, temp_x_src);
    }
-@@ -1890,29 +2036,30 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -1890,29 +2038,30 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
  
      // This includes a swizzle to choose XY for even render targets or ZW for
      // odd ones - use SelectFromSwizzled and SwizzleSwizzled.
@@ -3815,7 +3828,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
      // Check if need to write anything to the render target.
      // temp.x = free.
      a_.OpIf(true, temp_x_src);
-@@ -1924,20 +2071,28 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -1924,20 +2073,28 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
                                  offsetof(SystemConstants, color_exp_bias) + sizeof(float) * i,
                                  dxbc::Src::kXXXX));
  
@@ -3857,7 +3870,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
      // Add the EDRAM base of the render target to system_temp_rov_params_.y.
      a_.OpIAdd(dxbc::Dest::R(system_temp_rov_params_, 0b0010),
                dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
-@@ -1951,20 +2106,19 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -1951,20 +2108,19 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
                dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
                dxbc::Src::LU(edram_size_32bpp_samples));
  
@@ -3888,7 +3901,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
        // Clamp the color to the render target's representable range - will be
        // packed.
        a_.OpMax(dxbc::Dest::R(system_temps_color_[i]), dxbc::Src::R(system_temps_color_[i]),
-@@ -1974,53 +2128,96 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -1974,53 +2130,96 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
        // Pack the color once if blending.
        // temp.xy = packed color.
        ROV_PackPreClampedColor(i, system_temps_color_[i], temp, 0, temp, 2, temp, 3);
@@ -4022,7 +4035,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
        // Get if the sample is covered.
        // temp.z = whether the sample is covered.
        a_.OpAnd(temp_z_dest, dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kXXXX),
-@@ -2042,511 +2239,566 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -2042,511 +2241,566 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
        // kept or if blending is enabled.
        // ***********************************************************************
  
@@ -4367,14 +4380,6 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
 -              // color_temp.xyz.
 -              // color_temp.xyz = blended color.
 -              a_.OpMax(color_temp_rgb_dest, dxbc::Src::R(system_temps_color_[i]), color_temp_src);
--            }
--            // Need to do min.
--            a_.OpElse();
--            {
--              // Choose min of the colors without applying the factors to
--              // color_temp.xyz.
--              // color_temp.xyz = blended color.
--              a_.OpMin(color_temp_rgb_dest, dxbc::Src::R(system_temps_color_[i]), color_temp_src);
 +          a_.OpMax(temp_x_dest, temp_x_src, rt_clamp_vec_src.Select(1));
 +          a_.OpMin(temp_x_dest, temp_x_src, rt_clamp_vec_src.Select(3));
 +          a_.OpMul(color_temp_rgb_dest, color_temp_src, temp_x_src);
@@ -4393,6 +4398,14 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
 +            } else {
 +              a_.OpMov(temp_x_dest, dxbc::Src::LF(1.0f));
              }
+-            // Need to do min.
+-            a_.OpElse();
+-            {
+-              // Choose min of the colors without applying the factors to
+-              // color_temp.xyz.
+-              // color_temp.xyz = blended color.
+-              a_.OpMin(color_temp_rgb_dest, dxbc::Src::R(system_temps_color_[i]), color_temp_src);
+-            }
 -            // Close the min or max check.
 -            a_.OpEndIf();
 +            a_.OpMax(temp_x_dest, temp_x_src, rt_clamp_vec_src.Select(1));
@@ -5054,7 +5067,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
  
        // ***********************************************************************
        // Writing the color
-@@ -2558,14 +2810,11 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -2558,14 +2812,11 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
        }
        a_.OpStoreUAVTyped(dxbc::Dest::U(uav_index_edram_, uint32_t(UAVRegister::kEdram)),
                           dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY), 1, temp_x_src);
@@ -5074,7 +5087,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
          // Get the address of the upper 32 bits of the color to temp.z (can't
          // use temp.x because components when not blending, packing is done once
          // for all samples, so it has to be preserved).
-@@ -2577,9 +2826,9 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -2577,9 +2828,9 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
          }
          a_.OpStoreUAVTyped(dxbc::Dest::U(uav_index_edram_, uint32_t(UAVRegister::kEdram)),
                             temp_z_src, 1, temp_y_src);
@@ -5086,7 +5099,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
  
        // ***********************************************************************
        // End of color sample raster operation.
-@@ -2593,7 +2842,18 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -2593,7 +2844,18 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
        // +(80*scale_x) and -(80*scale_x+dwpp) after each sample).
        // Though no need to do this for the last sample as for the next render
        // target, the address will be recalculated.
@@ -5106,7 +5119,7 @@ index a7d508a9e0db4742523689a8437d0cef98069dd3..fed75904863d1322e668296a4417ca0d
          if (j & 1) {
            // temp.z = whether the render target is 64bpp.
            a_.OpAnd(temp_z_dest, rt_format_flags_src,
-@@ -2610,9 +2870,14 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
+@@ -2610,9 +2872,14 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
                      dxbc::Src::R(system_temp_rov_params_, dxbc::Src::kYYYY),
                      dxbc::Src::LU(tile_width));
          }
