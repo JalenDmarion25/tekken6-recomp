@@ -34,6 +34,15 @@ python3 tools/package_windows.py --build-dir build/windows-llvm \
 
 The package tool checks PE imports, stages required compiler runtime DLLs, and
 writes a `build-info.json` manifest with source revisions and binary hashes.
+CMake defaults to `Release` when no build type is selected. Generated guest
+code uses FMA3 by default for faster explicit fused operations; the resulting
+executable requires an FMA3-capable CPU. Set `-DTEKKEN6_ENABLE_FMA3=OFF` for a
+portable build.
+
+Press **F3** in game to show or hide the FPS and frame-time overlay. It reports
+guest frame swaps independently of the host's overlay or presentation rate.
+Routine logs are disabled in the Windows launcher. Unhandled crashes write
+`crash.txt` and `crash.dmp` under `crashes/<run>/`.
 
 ## Rendering paths
 

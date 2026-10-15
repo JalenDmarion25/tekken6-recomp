@@ -44,6 +44,19 @@ class Tekken6App final : public rex::ReXApp {
   }
 
  protected:
+  void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
+    rex::ReXApp::OnCreateDialogs(drawer);
+    SetGuestFrameStats([this] {
+      const auto* app_runtime = runtime();
+      const auto* graphics = app_runtime ? app_runtime->graphics_system() : nullptr;
+      if (!graphics) {
+        return rex::ui::FrameStats{};
+      }
+      const auto stats = graphics->guest_frame_stats();
+      return rex::ui::FrameStats{stats.frame_time_ms, stats.fps, stats.frame_count};
+    });
+  }
+
   void OnPreSetup(rex::RuntimeConfig& config) override {
 #if defined(_WIN32)
     InstallTekken6CrashReport();

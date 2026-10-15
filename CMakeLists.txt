@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 project(tekken6 LANGUAGES CXX)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+option(TEKKEN6_ENABLE_FMA3
+    "Compile generated guest code for CPUs with FMA3" ON)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -54,6 +60,16 @@ if(WIN32)
     target_link_options(tekken6 PRIVATE -municode)
 endif()
 rexglue_setup_target(tekken6 GPU_PLUGINS xenos)
+# Generated PPC code makes frequent explicit fused-multiply-add calls. FMA3
+# lowers these to hardware instructions while keeping implicit contraction off.
+if(TEKKEN6_ENABLE_FMA3)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-mfma" TEKKEN6_COMPILER_HAS_MFMA)
+    if(NOT TEKKEN6_COMPILER_HAS_MFMA)
+        message(FATAL_ERROR "TEKKEN6_ENABLE_FMA3 requires compiler support for -mfma")
+    endif()
+    target_compile_options(tekken6_recomp PRIVATE -mfma -ffp-contract=off)
+endif()
 # The app sources include UI headers (including imgui.h) and instantiate UI
 # classes, so carry the UI target's public include path and object code here.
 target_link_libraries(tekken6 PRIVATE rex::ui)

@@ -112,7 +112,7 @@ def main() -> None:
     else:
         copy_if_changed(xex, staged_xex)
 
-    for directory in ("cache", "logs", "user"):
+    for directory in ("cache", "crashes", "user"):
         (output / directory).mkdir(exist_ok=True)
     (output / "READ ME.txt").write_text(
         "TEKKEN 6 RECOMPILED WINDOWS BUILD\n\n"
@@ -122,6 +122,8 @@ def main() -> None:
         "tekken6_vulkan_fbo.exe selects the experimental Vulkan framebuffer path.\n"
         "tekken6_late_depth.exe and tekken6_fused_resolve.exe enable opt-in D3D12 ROV paths.\n"
         "Unsupported render cases fall back to the standard implementation.\n"
+        "Press F3 in game to show or hide the FPS and frame-time overlay.\n"
+        "Only unhandled crashes write reports under crashes/<run>/.\n"
         "The launchers share user saves and persistent caches under this folder.\n",
         encoding="utf-8",
     )
