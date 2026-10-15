@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <commctrl.h>
 
 #include <string>
 #include <vector>
@@ -14,6 +15,45 @@ static int Fail(const std::wstring& message, DWORD error = GetLastError()) {
 
 static bool Directory(const std::wstring& path) {
   return CreateDirectoryW(path.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
+static bool ChooseInternalResolution(const wchar_t*& resolution) {
+  enum : int { k640x360 = 101, k768x432 = 102, k1024x576 = 103 };
+  const TASKDIALOG_BUTTON choices[] = {
+      {k640x360, L"640 × 360  (lightest GPU workload)"},
+      {k768x432, L"768 × 432  (medium GPU workload)"},
+      {k1024x576, L"1024 × 576  (heaviest GPU workload; original)"},
+  };
+
+  TASKDIALOGCONFIG dialog{};
+  dialog.cbSize = sizeof(dialog);
+  dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+  dialog.dwCommonButtons = TDCBF_OK_BUTTON | TDCBF_CANCEL_BUTTON;
+  dialog.pszWindowTitle = L"Tekken 6";
+  dialog.pszMainInstruction = L"Choose the internal 3D resolution";
+  dialog.pszContent =
+      L"Select a rendering workload. The game window keeps its normal size. "
+      L"You can change this choice each time you launch.";
+  dialog.cRadioButtons = ARRAYSIZE(choices);
+  dialog.pRadioButtons = choices;
+  dialog.nDefaultRadioButton = k640x360;
+  dialog.pszFooter = L"Lower resolution reduces the number of 3D pixels rendered.";
+
+  int button = IDCANCEL;
+  int choice = k640x360;
+  if (FAILED(TaskDialogIndirect(&dialog, &button, &choice, nullptr))) {
+    MessageBoxW(nullptr, L"Could not open the resolution chooser.", L"Tekken 6",
+                MB_OK | MB_ICONERROR);
+    return false;
+  }
+  if (button != IDOK) return false;
+
+  switch (choice) {
+    case k640x360: resolution = L"640x360"; return true;
+    case k768x432: resolution = L"768x432"; return true;
+    case k1024x576: resolution = L"1024x576"; return true;
+    default: return false;
+  }
 }
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
@@ -30,16 +70,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
                 ERROR_FILE_NOT_FOUND);
   }
 
-  const int resolution_choice = MessageBoxW(
-      nullptr,
-      L"Choose the internal 3D render resolution. The game window stays at its normal size.\n\n"
-      L"Yes: 640 x 360 (lowest pixel cost)\n"
-      L"No: 768 x 432 (balanced)\n"
-      L"Cancel: 1024 x 576 (original)",
-      L"Tekken 6 render resolution", MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON1);
-  const wchar_t* internal_resolution = resolution_choice == IDYES
-      ? L"640x360"
-      : resolution_choice == IDNO ? L"768x432" : L"1024x576";
+  const wchar_t* internal_resolution = nullptr;
+  if (!ChooseInternalResolution(internal_resolution)) return 0;
 
   SYSTEMTIME now;
   GetLocalTime(&now);

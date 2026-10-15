@@ -75,44 +75,37 @@ endif()
 target_link_libraries(tekken6 PRIVATE rex::ui)
 
 if(WIN32)
+    function(tekken6_add_windows_launcher target_name)
+        add_executable(${target_name} WIN32
+            tools/portable_launcher.cpp
+            tools/tekken6_launcher.rc
+        )
+        target_include_directories(${target_name} PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools")
+        target_link_libraries(${target_name} PRIVATE user32 comctl32)
+        if(MINGW)
+            target_link_options(${target_name} PRIVATE -municode)
+        endif()
+    endfunction()
+
     # Low-overhead play/performance launcher. It keeps the best-known ROV
     # rendering path with persistent caches and disabled diagnostic tracing.
-    add_executable(tekken6_low_overhead WIN32 tools/portable_launcher.cpp)
+    tekken6_add_windows_launcher(tekken6_low_overhead)
     target_compile_definitions(tekken6_low_overhead PRIVATE TEKKEN6_LOW_OVERHEAD=1)
-    target_link_libraries(tekken6_low_overhead PRIVATE user32)
-    if(MINGW)
-        target_link_options(tekken6_low_overhead PRIVATE -municode)
-    endif()
     # Opt-in D3D12 ROV performance paths. The default runtime configuration
     # keeps both disabled until they are validated on representative workloads.
-    add_executable(tekken6_late_depth WIN32 tools/portable_launcher.cpp)
+    tekken6_add_windows_launcher(tekken6_late_depth)
     target_compile_definitions(tekken6_late_depth PRIVATE
         TEKKEN6_LOW_OVERHEAD=1 TEKKEN6_LATE_DEPTH=1)
-    target_link_libraries(tekken6_late_depth PRIVATE user32)
-    if(MINGW)
-        target_link_options(tekken6_late_depth PRIVATE -municode)
-    endif()
-    add_executable(tekken6_fused_resolve WIN32 tools/portable_launcher.cpp)
+    tekken6_add_windows_launcher(tekken6_fused_resolve)
     target_compile_definitions(tekken6_fused_resolve PRIVATE
         TEKKEN6_LOW_OVERHEAD=1 TEKKEN6_FUSED_RESOLVE=1)
-    target_link_libraries(tekken6_fused_resolve PRIVATE user32)
-    if(MINGW)
-        target_link_options(tekken6_fused_resolve PRIVATE -municode)
-    endif()
 endif()
 
 if(WIN32 AND REXGLUE_USE_VULKAN)
-    add_executable(tekken6_vulkan WIN32 tools/portable_launcher.cpp)
+    tekken6_add_windows_launcher(tekken6_vulkan)
     target_compile_definitions(tekken6_vulkan PRIVATE TEKKEN6_LOW_OVERHEAD=1 TEKKEN6_VULKAN=1)
-    target_link_libraries(tekken6_vulkan PRIVATE user32)
-    if(MINGW)
-        target_link_options(tekken6_vulkan PRIVATE -municode)
-    endif()
-    add_executable(tekken6_vulkan_fbo WIN32 tools/portable_launcher.cpp)
+    tekken6_add_windows_launcher(tekken6_vulkan_fbo)
     target_compile_definitions(tekken6_vulkan_fbo PRIVATE
         TEKKEN6_LOW_OVERHEAD=1 TEKKEN6_VULKAN=1 TEKKEN6_VULKAN_FBO=1)
-    target_link_libraries(tekken6_vulkan_fbo PRIVATE user32)
-    if(MINGW)
-        target_link_options(tekken6_vulkan_fbo PRIVATE -municode)
-    endif()
 endif()
