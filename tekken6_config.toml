@@ -40,6 +40,13 @@ address = 0x82219A28
 name = "ApplyTekkenInternalResolution"
 registers = ["r11", "r10"]
 
+# The offscreen target is resource 0x20000004, initialized at 1024x1024.
+# The launcher can lower it while leaving all other guest resources unchanged.
+[[midasm_hook]]
+address = 0x821AB410
+name = "ApplyTekkenOffscreenResolution"
+registers = ["r3", "r4", "r5"]
+
 # RexGlue's validation reports these branch targets as tail/secondary
 # functions, while the existing independent XenonRecomp pass already proves
 # each is a real emitted function start in this exact XEX.

@@ -35,3 +35,22 @@ void ApplyTekkenInternalResolution(PPCRegister& width, PPCRegister& height) {
   width.u32 = resolution.width;
   height.u32 = resolution.height;
 }
+
+// The game creates this offscreen texture independently of the main scene
+// resolution. Keep the override limited to its known guest resource ID.
+void ApplyTekkenOffscreenResolution(PPCRegister& resource_id, PPCRegister& width,
+                                   PPCRegister& height) {
+  if (resource_id.u32 != 0x20000004) {
+    return;
+  }
+
+  static const InternalResolution resolution = [] {
+    const char* value = std::getenv("TEKKEN6_OFFSCREEN_RESOLUTION");
+    if (value != nullptr && std::strcmp(value, "512x512") == 0) {
+      return InternalResolution{512, 512};
+    }
+    return InternalResolution{1024, 1024};
+  }();
+  width.u32 = resolution.width;
+  height.u32 = resolution.height;
+}

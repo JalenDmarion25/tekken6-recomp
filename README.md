@@ -44,6 +44,11 @@ guest frame swaps independently of the host's overlay or presentation rate.
 Routine logs are disabled in the Windows launcher. Unhandled crashes write
 `crash.txt` and `crash.dmp` under `crashes/<run>/`.
 
+The startup chooser offers internal 3D resolutions from 640x360 through the
+original 1024x576. It also enables a 512x512 size for the 1024x1024 offscreen
+target by default; this can soften shadows. Uncheck the option to keep the
+original offscreen size.
+
 ## Rendering paths
 
 `tekken6.exe` selects D3D12 ROV. The runtime includes no-blend shader

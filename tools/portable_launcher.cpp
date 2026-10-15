@@ -17,7 +17,8 @@ static bool Directory(const std::wstring& path) {
   return CreateDirectoryW(path.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
-static bool ChooseInternalResolution(const wchar_t*& resolution) {
+static bool ChooseRenderingOptions(const wchar_t*& resolution,
+                                   const wchar_t*& offscreen_resolution) {
   enum : int { k640x360 = 101, k768x432 = 102, k1024x576 = 103 };
   const TASKDIALOG_BUTTON choices[] = {
       {k640x360, L"640 × 360  (lightest GPU workload)"},
@@ -27,7 +28,8 @@ static bool ChooseInternalResolution(const wchar_t*& resolution) {
 
   TASKDIALOGCONFIG dialog{};
   dialog.cbSize = sizeof(dialog);
-  dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+  dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT |
+                   TDF_VERIFICATION_FLAG_CHECKED;
   dialog.dwCommonButtons = TDCBF_OK_BUTTON | TDCBF_CANCEL_BUTTON;
   dialog.pszWindowTitle = L"Tekken 6";
   dialog.pszMainInstruction = L"Choose the internal 3D resolution";
@@ -38,15 +40,19 @@ static bool ChooseInternalResolution(const wchar_t*& resolution) {
   dialog.pRadioButtons = choices;
   dialog.nDefaultRadioButton = k640x360;
   dialog.pszFooter = L"Lower resolution reduces the number of 3D pixels rendered.";
+  dialog.pszVerificationText =
+      L"Reduce the 1024 × 1024 offscreen target to 512 × 512 (lighter GPU workload; may soften shadows)";
 
   int button = IDCANCEL;
   int choice = k640x360;
-  if (FAILED(TaskDialogIndirect(&dialog, &button, &choice, nullptr))) {
+  BOOL reduce_offscreen = TRUE;
+  if (FAILED(TaskDialogIndirect(&dialog, &button, &choice, &reduce_offscreen))) {
     MessageBoxW(nullptr, L"Could not open the resolution chooser.", L"Tekken 6",
                 MB_OK | MB_ICONERROR);
     return false;
   }
   if (button != IDOK) return false;
+  offscreen_resolution = reduce_offscreen ? L"512x512" : L"1024x1024";
 
   switch (choice) {
     case k640x360: resolution = L"640x360"; return true;
@@ -71,7 +77,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
   }
 
   const wchar_t* internal_resolution = nullptr;
-  if (!ChooseInternalResolution(internal_resolution)) return 0;
+  const wchar_t* offscreen_resolution = nullptr;
+  if (!ChooseRenderingOptions(internal_resolution, offscreen_resolution)) return 0;
 
   SYSTEMTIME now;
   GetLocalTime(&now);
@@ -97,6 +104,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
       {L"REX_LOG_LEVEL", L"off"},
       {L"TEKKEN6_CRASH_DIR", crash_dir.c_str()},
       {L"TEKKEN6_INTERNAL_RESOLUTION", internal_resolution},
+      {L"TEKKEN6_OFFSCREEN_RESOLUTION", offscreen_resolution},
   };
   for (const auto& setting : settings) {
     if (!SetEnvironmentVariableW(setting.name, setting.value)) {

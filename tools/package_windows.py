@@ -120,6 +120,8 @@ def main() -> None:
         "tekken6.exe starts the D3D12 ROV build.\n"
         "Each launcher offers internal 3D resolutions from lightest to heaviest GPU workload: "
         "640x360, 768x432, and original 1024x576.\n"
+        "The chooser also enables a 512x512 size for the 1024x1024 offscreen target by default; "
+        "this can soften shadows. Uncheck it to keep the original size.\n"
         "tekken6_vulkan.exe selects Vulkan FSI and requires fragment shader interlock.\n"
         "tekken6_vulkan_fbo.exe selects the experimental Vulkan framebuffer path.\n"
         "tekken6_late_depth.exe and tekken6_fused_resolve.exe enable opt-in D3D12 ROV paths.\n"
