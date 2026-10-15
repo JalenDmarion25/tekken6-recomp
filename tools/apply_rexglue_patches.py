@@ -10,11 +10,16 @@ from pathlib import Path
 
 
 BASE_REVISION = "0c7b01a0ac0479801757507d80533f662fa0815d"
+PATCHED_REVISIONS = {
+    "55a85aec17bf5c7f6b15db4df2c05a0c9f0340e2",
+    "a345857b6d76f93c4bb79e0af1da32188e45aaf9",
+}
 PATCHES = (
     "0001-tekken-runtime-support.patch",
     "0002-draw-outcome-tracing.patch",
     "0003-guest-av-context.patch",
     "0004-windowed-frame.patch",
+    "0005-performance-and-vulkan.patch",
 )
 
 
@@ -44,6 +49,9 @@ def main() -> int:
         print(f"ReXGlue SDK checkout not found: {sdk}", file=sys.stderr)
         return 2
     revision = git(sdk, "rev-parse", "HEAD").stdout.strip()
+    if revision in PATCHED_REVISIONS:
+        print("Pinned SDK already contains the project compatibility and performance patches.")
+        return 0
     if revision != BASE_REVISION:
         print(
             f"Expected ReXGlue base {BASE_REVISION}, found {revision}; refusing to patch a different SDK.",

@@ -1,4 +1,4 @@
-// Portable Windows test launcher. The actual ReXGlue host lives in bin/.
+// Portable Windows launcher. The actual ReXGlue host lives in bin/.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -8,7 +8,7 @@
 
 static int Fail(const std::wstring& message, DWORD error = GetLastError()) {
   const auto text = message + L"\n\nWindows error: " + std::to_wstring(error);
-  MessageBoxW(nullptr, text.c_str(), L"Tekken 6 test", MB_OK | MB_ICONERROR);
+  MessageBoxW(nullptr, text.c_str(), L"Tekken 6", MB_OK | MB_ICONERROR);
   return 1;
 }
 
@@ -37,17 +37,17 @@ static bool AppendText(const std::wstring& path, const std::string& text, bool c
   return ok;
 }
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int) {
   std::vector<wchar_t> module(32768);
   const DWORD length = GetModuleFileNameW(nullptr, module.data(), DWORD(module.size()));
-  if (!length || length >= module.size()) return Fail(L"Cannot locate the test folder.");
+  if (!length || length >= module.size()) return Fail(L"Cannot locate the game folder.");
   const std::wstring executable(module.data(), length);
   const auto root = executable.substr(0, executable.find_last_of(L"\\/"));
   const auto host = root + L"\\bin\\tekken6.exe";
   const auto game = root + L"\\game";
   if (GetFileAttributesW(host.c_str()) == INVALID_FILE_ATTRIBUTES ||
       GetFileAttributesW((game + L"\\default.xex").c_str()) == INVALID_FILE_ATTRIBUTES) {
-    return Fail(L"Game or runtime files are missing. Copy the entire Tekken6-Windows-Test folder.",
+    return Fail(L"Game or runtime files are missing. Copy the entire Windows package folder.",
                 ERROR_FILE_NOT_FOUND);
   }
 
@@ -58,9 +58,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
              now.wDay, now.wHour, now.wMinute, now.wSecond, GetCurrentProcessId());
   const auto logs = root + L"\\logs";
   const auto run = logs + L"\\" + run_name;
-  if (!Directory(logs) || !Directory(run) || !Directory(root + L"\\user")) {
-    return Fail(L"Cannot write diagnostics. Put the test folder somewhere writable.");
+  if (!Directory(logs) || !Directory(run) || !Directory(root + L"\\user") || !Directory(root + L"\\cache")) {
+    return Fail(L"Cannot write logs. Put the package folder somewhere writable.");
   }
+#if defined(TEKKEN6_LATE_DEPTH)
+  if (!Directory(root + L"\\cache\\late-depth")) return Fail(L"Cannot create the late-depth cache.");
+#elif defined(TEKKEN6_FUSED_RESOLVE)
+  if (!Directory(root + L"\\cache\\fused-resolve")) return Fail(L"Cannot create the fused-resolve cache.");
+#endif
 
   // Child processes inherit these through the Windows environment, including
   // the independently linked runtime DLL's C runtime getenv implementation.
@@ -73,7 +78,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       {L"TEKKEN6_TRACE_RENDERING_DETAIL", L"1"},
       {L"TEKKEN6_TRACE_RENDERING_DETAIL_INTERVAL", L"60"},
 #endif
-      {L"REX_GPU_VSYNC", L"0"},
       {L"REX_FULLSCREEN", L"0"},
       {L"REX_LOG_LEVEL", L"info"},
   };
@@ -96,14 +100,45 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       return Fail(L"Cannot disable unneeded diagnostics.");
     }
   }
+  if (!SetEnvironmentVariableW(L"TEKKEN6_CRASH_DIR", run.c_str())) {
+    return Fail(L"Cannot configure crash reporting.");
+  }
 
   auto command = L"\"" + host + L"\" --game_data_root=\"" + game +
-      L"\" --user_data_root=\"" + root + L"\\user\" --cache_root=\"" + run +
+      L"\" --user_data_root=\"" + root + L"\\user\" --cache_root=\"" + root +
+#if defined(TEKKEN6_LATE_DEPTH)
+      L"\\cache\\late-depth\" --log_file=\"" + run + L"\\tekken6.log\" --fullscreen=false";
+#elif defined(TEKKEN6_FUSED_RESOLVE)
+      L"\\cache\\fused-resolve\" --log_file=\"" + run + L"\\tekken6.log\" --fullscreen=false";
+#else
       L"\\cache\" --log_file=\"" + run + L"\\tekken6.log\" --fullscreen=false";
-#if defined(TEKKEN6_LOW_OVERHEAD)
-  command += L" --async_shader_compilation=true --render_target_path_d3d12=rov"
-             L" --anisotropic_override=0 --native_2x_msaa=false";
-  const wchar_t* variant = L"ROV, anisotropic filtering off, native 2x MSAA off; tracing disabled";
+#endif
+#if defined(TEKKEN6_LATE_DEPTH)
+  command += L" --gpu_backend=d3d12 --async_shader_compilation=true"
+             L" --render_target_path_d3d12=rov --anisotropic_override=0"
+             L" --d3d12_rov_late_depth=true";
+  const wchar_t* variant = L"EXPERIMENTAL D3D12 ROV selective late depth";
+  const wchar_t* launch_title = L"Tekken 6 late-depth experiment";
+#elif defined(TEKKEN6_FUSED_RESOLVE)
+  command += L" --gpu_backend=d3d12 --async_shader_compilation=true"
+             L" --render_target_path_d3d12=rov --anisotropic_override=0"
+             L" --d3d12_fused_resolve=true";
+  const wchar_t* variant = L"EXPERIMENTAL D3D12 ROV fused RGBA8 resolve";
+  const wchar_t* launch_title = L"Tekken 6 fused-resolve experiment";
+#elif defined(TEKKEN6_VULKAN_FBO)
+  command += L" --gpu_backend=vulkan --render_target_path_vulkan=fbo"
+             L" --async_shader_compilation=false --anisotropic_override=0";
+  const wchar_t* variant = L"EXPERIMENTAL Vulkan FBO; interlock not required; 3D rendering unverified";
+  const wchar_t* launch_title = L"Tekken 6 experimental Vulkan FBO launch";
+#elif defined(TEKKEN6_VULKAN)
+  command += L" --gpu_backend=vulkan --render_target_path_vulkan=fsi"
+             L" --async_shader_compilation=false --anisotropic_override=0";
+  const wchar_t* variant = L"Vulkan FSI; complete draws, persistent shader cache, tracing disabled";
+  const wchar_t* launch_title = L"Tekken 6 Vulkan launch";
+#elif defined(TEKKEN6_LOW_OVERHEAD)
+  command += L" --gpu_backend=d3d12 --async_shader_compilation=true"
+             L" --render_target_path_d3d12=rov --anisotropic_override=0";
+  const wchar_t* variant = L"D3D12 ROV, persistent shader cache, anisotropic filtering off; tracing disabled";
   const wchar_t* launch_title = L"Tekken 6 low overhead launch";
 #elif defined(TEKKEN6_ASYNC_SHADER_COMPILATION_OFF)
   command += L" --async_shader_compilation=false";
@@ -126,6 +161,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const wchar_t* variant = L"async_shader_compilation=true (default behavior)";
   const wchar_t* launch_title = L"Tekken 6 diagnostic launch";
 #endif
+  // Forward explicit user overrides after the launcher defaults.
+  if (arguments && *arguments) command += std::wstring(L" ") + arguments;
   std::vector<wchar_t> command_buffer(command.begin(), command.end());
   command_buffer.push_back(0);
 
@@ -136,7 +173,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       L"\r\nset environment:\r\n"
       L"  TEKKEN6_YIELD_STARTUP_SPIN=1\r\n"
       L"  TEKKEN6_FRAME_PROBE_ATTEMPTS=0\r\n"
-      L"  REX_GPU_VSYNC=0\r\n  REX_FULLSCREEN=0\r\n  REX_LOG_LEVEL=info\r\n"
+      L"  REX_FULLSCREEN=0\r\n  REX_LOG_LEVEL=info\r\n"
       L"cleared environment:\r\n"
       L"  TEKKEN6_TRACE_OUTPUT, TEKKEN6_TRACE_RENDERING,\r\n"
       L"  TEKKEN6_TRACE_RENDERING_DETAIL, TEKKEN6_TRACE_RENDERING_DETAIL_INTERVAL,\r\n"
@@ -153,7 +190,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       L"  TEKKEN6_TRACE_RENDERING=1\r\n"
       L"  TEKKEN6_TRACE_RENDERING_DETAIL=1\r\n"
       L"  TEKKEN6_TRACE_RENDERING_DETAIL_INTERVAL=60\r\n"
-      L"  REX_GPU_VSYNC=0\r\n  REX_FULLSCREEN=0\r\n  REX_LOG_LEVEL=info\r\n"
+      L"  REX_FULLSCREEN=0\r\n  REX_LOG_LEVEL=info\r\n"
       L"cleared environment:\r\n"
       L"  TEKKEN6_CAPTURE_ALL, TEKKEN6_CAPTURE_CONTINUOUS, TEKKEN6_TRACE_IO,\r\n"
       L"  TEKKEN6_TRACE_QUEUE, TEKKEN6_TRACE_MOVIE, TEKKEN6_TRACE_TITLE_STATE,\r\n"
@@ -208,6 +245,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     WriteFile(status, text.data(), DWORD(text.size()), &written, nullptr);
     CloseHandle(status);
   }
-  if (result) return Fail(L"Tekken 6 exited with an error. Diagnostics: " + run, result);
+  if (result) {
+#if defined(TEKKEN6_VULKAN) && !defined(TEKKEN6_VULKAN_FBO)
+    return Fail(L"Vulkan FSI exited with an error. This renderer requires "
+                L"VK_EXT_fragment_shader_interlock. The Windows AMD drivers in "
+                L"the reported logs do not expose it.\n\n"
+                L"Use tekken6.exe for D3D12 ROV, or tekken6_vulkan_fbo.exe "
+                L"for the experimental Vulkan framebuffer path.\n\nDiagnostics: " + run, result);
+#else
+    return Fail(L"Tekken 6 exited with an error. Diagnostics: " + run, result);
+#endif
+  }
   return 0;
 }

@@ -1,6 +1,6 @@
 # User-provided game image and extracted game data
 *.iso
-/game/
+/game
 /user/
 
 # Code generated from the user's XEX and all local build outputs
@@ -14,3 +14,6 @@
 *.log
 .DS_Store
 Thumbs.db
+
+# Local-only renderer testing material
+/.local-tests/

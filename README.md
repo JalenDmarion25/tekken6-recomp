@@ -1,32 +1,52 @@
 # Tekken 6 Recomp
 
-This is the isolated public-source project for the ReXGlue recompilation. The
-working goal is that a user supplies a compatible Xbox 360 disc image and the
-project extracts it locally, generates PPC code, builds the patched runtime,
-and launches it against the extracted game files.
+Static recompiler project for the Xbox 360 release of Tekken 6. Game data and
+generated code come from a user-provided XEX and are kept out of version control.
 
-**The ISO-to-play workflow is not complete yet.** This repository intentionally
-does not contain a game ISO, extracted game data, generated PPC code, save data,
-or a prebuilt game executable. A matching user-provided image will be required.
+## Windows build
 
-## Project patches
+For a Linux-hosted Windows build, use an extracted LLVM-MinGW distribution.
+Generate guest code from your own game XEX, then configure the Windows build:
 
-`patches/rexglue/` holds the project-owned SDK changes, applied to the pinned
-upstream ReXGlue revision. The series includes the runtime compatibility,
-rendering diagnostics, guest access-violation context, and Windows window-frame
-changes used by the working build. Run `python tools/apply_rexglue_patches.py`
-after initializing the SDK submodule and before configuring CMake.
+```sh
+cmake -S third_party/rexglue-sdk -B build/sdk-native -G Ninja \
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-mssse3 \
+  -DREXGLUE_ENABLE_TRACY=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
+cmake --build build/sdk-native --target rexglue --parallel 3
+third_party/rexglue-sdk/out/linux-amd64/rexglue codegen tekken6_manifest.toml
 
-The game's missing thunk/helper entrypoints are kept in `tekken6_config.toml`
-so code generation can recreate them from the user's XEX. Generated output
-belongs under `generated/default/` and is ignored by Git.
+cmake -S . -B build/windows-llvm -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/windows-clang.cmake \
+  -DLLVM_MINGW_ROOT=/path/to/extracted/llvm-mingw \
+  -DCMAKE_BUILD_TYPE=Release -DTEKKEN6_USE_PREGENERATED_CODE=ON \
+  -DREXGLUE_USE_D3D12=ON -DREXGLUE_USE_VULKAN=ON \
+  -DREXGLUE_ENABLE_TRACY=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
+  -DREXGLUE_RECOMP_DEBUG_INFO=none
+cmake --build build/windows-llvm --target tekken6 tekken6_low_overhead \
+  tekken6_late_depth tekken6_fused_resolve tekken6_vulkan \
+  tekken6_vulkan_fbo --parallel 2
 
-## Current layout
+python3 tools/package_windows.py --build-dir build/windows-llvm \
+  --game-root /path/to/game --output /path/to/windows-package \
+  --llvm-mingw-root /path/to/extracted/llvm-mingw
+```
 
-- `src/`: project-owned ReXGlue app and runtime hooks.
-- `tekken6_config.toml`, `tekken6_manifest.toml`: code-generation settings.
-- `tools/xdvdfs/`: ISO filesystem reader and extractor.
-- `patches/rexglue/`: SDK patch series against the pinned SDK base.
-- `third_party/rexglue-sdk/`: upstream SDK submodule.
+The package tool checks PE imports, stages required compiler runtime DLLs, and
+writes a `build-info.json` manifest with source revisions and binary hashes.
 
+## Rendering paths
 
+`tekken6.exe` selects D3D12 ROV. The runtime includes no-blend shader
+specialization and opt-in late-depth and fused RGBA8 resolve paths; unsupported
+draws and resolves continue through the general implementation. The optional
+late-depth and fused-resolve launchers enable those paths individually.
+
+`tekken6_vulkan.exe` selects Vulkan fragment shader interlock (FSI). It requires
+a Vulkan device and driver that expose fragment shader interlock. The explicit
+request fails if the extension is unavailable. `tekken6_vulkan_fbo.exe` selects
+the experimental framebuffer path, which does not require interlock.
+
+The launcher keeps user saves, shader caches, and per-run logs in the package
+directory. Game files and generated recompilation sources are local inputs and
+must not be committed.

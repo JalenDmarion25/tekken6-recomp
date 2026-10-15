@@ -22,6 +22,10 @@
 #include <rex/memory/utils.h>
 #include <rex/filesystem/devices/host_path_device.h>
 
+#if defined(_WIN32)
+void InstallTekken6CrashReport();
+#endif
+
 class Tekken6App final : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -41,6 +45,9 @@ class Tekken6App final : public rex::ReXApp {
 
  protected:
   void OnPreSetup(rex::RuntimeConfig& config) override {
+#if defined(_WIN32)
+    InstallTekken6CrashReport();
+#endif
     // ReXGlue 0.10 loads Xenos as a runtime plugin. Do not silently run with
     // the SDK's default no-GPU mode: that would test only guest bring-up.
     if (config.gpu_plugin.empty()) {
@@ -1060,7 +1067,9 @@ class Tekken6App final : public rex::ReXApp {
     SetGpr<MethodRegister>(ctx, method);
     ctx.ctr.u64 = method;
     ctx.last_indirect_target = method;
-    rex::runtime::ResolveIndirectFunction(method)(ctx, base);
+    // Use the same bounds-checked module table as generated bctr calls. The
+    // resolver remains the fallback for cross-module and unregistered targets.
+    REX_CALL_INDIRECT_FUNC(method);
   }
 
   static uint32_t ReadGuestWord(uint32_t address) {
