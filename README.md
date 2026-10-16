@@ -74,7 +74,9 @@ python3 tools/package_portable_builder.py \
 Upload the complete `out/tekken6-builder` folder as a ZIP. Keep `Tekken 6
 Builder.exe` and its `builder` folder together. The folder contains the pinned
 project sources and build tools; the game itself is extracted from the player's
-ISO when they run the builder.
+ISO when they run the builder. Project sources stay in one archive to reduce the
+number of files in the initial unzip; the builder unpacks them automatically
+when the first build starts.
 
 Press **F3** in game to show or hide the FPS and frame-time overlay. It reports
 guest frame swaps independently of the host's overlay or presentation rate.

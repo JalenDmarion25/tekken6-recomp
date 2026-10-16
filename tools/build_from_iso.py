@@ -10,8 +10,8 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import sys
 import time
+import zipfile
 
 
 SUPPORTED_XEX = {
@@ -150,8 +150,6 @@ def main() -> int:
     builder = args.builder_root.resolve()
     project_template = args.project.resolve()
     output = args.output.resolve()
-    if not project_template.is_dir() or not (project_template / "CMakeLists.txt").is_file():
-        parser.error(f"builder project files are missing: {project_template}")
     if not any((args.d3d12_rov, args.vulkan_fsi, args.vulkan_fbo)):
         parser.error("select at least one renderer")
 
@@ -160,26 +158,50 @@ def main() -> int:
     log = builder / "build.log"
     log.write_text(f"Tekken 6 portable build started: {time.ctime()}\n", encoding="utf-8")
     build_info_path = builder / "build-info.json"
-    if not build_info_path.is_file():
-        parser.error("builder\\build-info.json is missing")
     build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
     project = work / "project"
     source_marker = project / ".builder-source-revision"
-    if source_marker.is_file() and source_marker.read_text(encoding="utf-8").strip() != build_info["recomp_revision"]:
+    marker_value = build_info["recomp_revision"] + "\nsource-bundle-v2"
+    source_ready = (
+        project.is_dir() and source_marker.is_file() and
+        source_marker.read_text(encoding="utf-8").strip() == marker_value
+    )
+    if project.exists() and not source_ready:
         shutil.rmtree(project)
         shutil.rmtree(work / "windows-build", ignore_errors=True)
-    if not project.is_dir():
-        say("STEP Preparing the local build files")
-        shutil.copytree(project_template, project)
-        source_marker.write_text(build_info["recomp_revision"] + "\n", encoding="utf-8")
+    if not source_ready:
+        say("STEP Unpacking the build sources")
+        say("PROGRESS 3")
+        project.mkdir(parents=True)
+        if project_template.is_dir():
+            shutil.copytree(project_template, project, dirs_exist_ok=True,
+                            copy_function=shutil.copy)
+        else:
+            with zipfile.ZipFile(project_template) as archive:
+                for entry in archive.infolist():
+                    destination = (project / entry.filename).resolve()
+                    if not destination.is_relative_to(project.resolve()):
+                        raise RuntimeError("The bundled source archive contains an invalid path.")
+                    if entry.is_dir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                    else:
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        with archive.open(entry) as source_stream, destination.open("wb") as target:
+                            shutil.copyfileobj(source_stream, target)
+        sdk = project / "third_party" / "rexglue-sdk"
+        sdk_markers = (
+            "cli11", "libmspack", "FFmpeg", "tomlplusplus", "simde", "xxHash",
+            "spdlog", "fmt", "utfcpp", "imgui", "sdl3", "inja", "o1heap",
+            "vulkan-headers", "vulkan-memory-allocator", "spirv-headers",
+            "spirv-tools", "glslang",
+        )
+        for directory in (sdk, *(sdk / "thirdparty" / name for name in sdk_markers)):
+            (directory / ".git").mkdir(parents=True, exist_ok=True)
+        source_marker.write_text(marker_value + "\n", encoding="utf-8")
     xdvdfs = builder / "bin" / "xdvdfs_tool.exe"
     cmake = builder / "cmake" / "bin" / "cmake.exe"
     ninja = builder / "ninja" / "ninja.exe"
     llvm_mingw = builder / "llvm-mingw"
-    if not all(path.is_file() for path in (xdvdfs, cmake, ninja,
-            llvm_mingw / "bin" / "x86_64-w64-mingw32-clang++.exe")):
-        parser.error("the portable compiler tools are missing from the builder folder")
-
     # The compiler emits build-time Windows tools (including rexglue.exe) that
     # depend on LLVM-MinGW runtime DLLs. Keep those DLLs discoverable for CMake
     # custom commands as well as for the compiler itself.
@@ -199,6 +221,7 @@ def main() -> int:
             str(cmake), "-S", str(project), "-B", str(build_dir), "-G", "Ninja",
             f"-DCMAKE_MAKE_PROGRAM={ninja}",
             f"-DPYTHON_EXECUTABLE={builder / 'python' / 'python.exe'}",
+            "-DCMAKE_SUPPRESS_REGENERATION=ON",
             f"-DCMAKE_TOOLCHAIN_FILE={project / 'cmake' / 'windows-clang.cmake'}",
             f"-DLLVM_MINGW_ROOT={llvm_mingw}",
             f"-DREXSDK_DIR={project / 'third_party' / 'rexglue-sdk'}",
@@ -212,8 +235,25 @@ def main() -> int:
             "-DREXGLUE_RECOMP_DEBUG_INFO=none",
             "-DTEKKEN6_ENABLE_FMA3=OFF",
         ]
-        run(configure_command, cwd=project, log=log,
-            label="Preparing the Windows build", progress=18)
+        import_header = project / "generated" / "default" / "tekken6_funcs.h"
+        config_marker = build_dir / "portable-builder-config.json"
+        config_signature = json.dumps({
+            "recomp_revision": build_info["recomp_revision"],
+            "sdk_revision": build_info["sdk_revision"],
+            "d3d12_rov": args.d3d12_rov,
+            "vulkan_fsi": args.vulkan_fsi,
+            "vulkan_fbo": args.vulkan_fbo,
+        }, sort_keys=True)
+        configured = (
+            (build_dir / "CMakeCache.txt").is_file() and
+            (build_dir / "build.ninja").is_file() and
+            config_marker.is_file() and
+            config_marker.read_text(encoding="utf-8").strip() == config_signature
+        )
+        had_import_header = import_header.is_file()
+        if not configured:
+            run(configure_command, cwd=project, log=log,
+                label="Preparing the Windows build", progress=18)
 
         workers = max(1, min(3, (os.cpu_count() or 2) - 1))
         run([str(cmake), "--build", str(build_dir), "--target", "tekken6_codegen",
@@ -221,10 +261,12 @@ def main() -> int:
             label="Generating game code", progress=22)
 
         # The Windows runtime exports are derived from codegen's import header.
-        # Reconfigure now that it exists so the runtime .def is included before
-        # compiling the game host and renderer launchers.
-        run(configure_command, cwd=project, log=log,
-            label="Finishing Windows build setup", progress=24)
+        # Reconfigure once after first generation so the runtime .def is included.
+        if not configured and not had_import_header:
+            run(configure_command, cwd=project, log=log,
+                label="Finishing Windows build setup", progress=24)
+        build_dir.mkdir(parents=True, exist_ok=True)
+        config_marker.write_text(config_signature + "\n", encoding="utf-8")
 
         targets = ["xdvdfs_tool", "tekken6"]
         backends = []

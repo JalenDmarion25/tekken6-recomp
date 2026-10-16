@@ -227,24 +227,11 @@ bool StartBuild() {
   const std::wstring builder = Join(app_root, L"builder");
   const std::wstring python = Join(Join(builder, L"python"), L"python.exe");
   const std::wstring script = Join(builder, L"build_from_iso.py");
-  const std::wstring project = Join(builder, L"project");
-  const std::wstring cmake = Join(Join(builder, L"cmake\\bin"), L"cmake.exe");
-  const std::wstring ninja = Join(Join(builder, L"ninja"), L"ninja.exe");
-  const std::wstring compiler = Join(Join(builder, L"llvm-mingw\\bin"),
-                                     L"x86_64-w64-mingw32-clang++.exe");
-  const std::wstring xdvdfs = Join(Join(builder, L"bin"), L"xdvdfs_tool.exe");
-  for (const auto& required : {python, script, project + L"\\CMakeLists.txt",
-                               cmake, ninja, compiler, xdvdfs}) {
-    if (!Exists(required)) {
-      ShowError(L"The builder package is incomplete. Extract the complete release package, "
-                L"including its builder folder, then run this program again.");
-      return false;
-    }
-  }
+  const std::wstring project_archive = Join(builder, L"project.zip");
 
   std::wstring command = Quote(python) + L" -X utf8 -I " + Quote(script) +
       L" --iso " + Quote(iso) + L" --output " + Quote(output) +
-      L" --builder-root " + Quote(builder) + L" --project " + Quote(project);
+      L" --builder-root " + Quote(builder) + L" --project " + Quote(project_archive);
   if (d3d12) command += L" --d3d12-rov";
   if (vulkan_fsi) command += L" --vulkan-fsi";
   if (vulkan_fbo) command += L" --vulkan-fbo";
