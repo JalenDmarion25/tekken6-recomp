@@ -124,6 +124,7 @@ def main() -> None:
     shutil.copy2(args.xdvdfs_tool, builder / "bin" / "xdvdfs_tool.exe")
 
     metadata = {
+        "version": (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
         "recomp_revision": git_revision(ROOT),
         "sdk_revision": git_revision(ROOT / "third_party" / "rexglue-sdk"),
     }
@@ -131,11 +132,13 @@ def main() -> None:
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )
     (output / "README.txt").write_text(
-        "TEKKEN 6 BUILDER\n\n"
+        f"TEKKEN 6 BUILDER {metadata['version']}\n\n"
         "1. Extract the complete release folder.\n"
         "2. Open Tekken 6 Builder.exe.\n"
         "3. Select your own Xbox 360 ISO.\n"
         "4. Choose one or more renderer versions and press Build.\n\n"
+        "Supported ISO: Tekken 6 (Europe) (En,Ja,Fr,De,Es,It,Ko,Ru).iso\n"
+        "D3D12 ROV is the default and offers the widest compatibility.\n\n"
         "The builder checks the game version, extracts the game on this PC, and "
         "creates a Windows package in the folder you choose. It includes no game "
         "ISO or game data. Keep the builder folder beside the executable.\n\n"

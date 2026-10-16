@@ -70,12 +70,14 @@ python3 tools/package_portable_builder.py \
   --ninja /path/to/ninja.exe \
   --python-root /path/to/python-embeddable \
   --xdvdfs-tool build/windows-llvm/tools/xdvdfs/xdvdfs_tool.exe \
-  --output out/tekken6-builder
+  --output build/Tekken6-Builder-Windows
 ```
 
-Upload the complete `out/tekken6-builder` folder as a ZIP. Keep `Tekken 6
-Builder.exe` and its `builder` folder together. The folder contains the pinned
-project sources and build tools; the game itself is extracted from the player's
+Release versions are set in `VERSION`; the builder window, Windows file details,
+and package manifests use that version. For 0.9.4, archive the complete
+`build/Tekken6-Builder-Windows` folder as `Tekken6-Builder-Windows-0.9.4.zip`.
+Keep `Tekken 6 Builder.exe` and its `builder` folder together. The folder contains
+the pinned project sources and build tools; the game itself is extracted from the player's
 ISO when they run the builder. Project sources stay in one archive to reduce the
 number of files in the initial unzip; the builder unpacks them automatically
 when the first build starts.

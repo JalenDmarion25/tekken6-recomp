@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
-project(tekken6 LANGUAGES CXX)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" TEKKEN6_VERSION LIMIT_COUNT 1)
+project(tekken6 VERSION ${TEKKEN6_VERSION} LANGUAGES CXX)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -84,7 +87,12 @@ endif()
 target_link_libraries(tekken6 PRIVATE rex::ui)
 
 if(WIN32)
-    add_executable(tekken6_builder WIN32 tools/portable_builder.cpp)
+    configure_file(tools/portable_builder.rc.in
+        "${CMAKE_CURRENT_BINARY_DIR}/portable_builder.rc" @ONLY)
+    add_executable(tekken6_builder WIN32 tools/portable_builder.cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/portable_builder.rc")
+    target_compile_definitions(tekken6_builder PRIVATE
+        TEKKEN6_VERSION="${PROJECT_VERSION}")
     target_link_libraries(tekken6_builder PRIVATE comctl32 comdlg32 shell32 ole32)
     if(MINGW)
         target_link_options(tekken6_builder PRIVATE -municode)

@@ -12,6 +12,8 @@
 
 namespace {
 
+constexpr wchar_t kWindowTitle[] = L"Tekken 6 Builder " TEKKEN6_VERSION;
+
 enum : int {
   kIsoEdit = 1001,
   kIsoBrowse,
@@ -204,7 +206,7 @@ bool Exists(const std::wstring& path) {
 }
 
 void ShowError(const std::wstring& message) {
-  MessageBoxW(g_window, message.c_str(), L"Tekken 6 Builder",
+  MessageBoxW(g_window, message.c_str(), kWindowTitle,
               MB_OK | MB_ICONERROR);
 }
 
@@ -423,7 +425,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam,
       if (g_building) {
         if (MessageBoxW(window,
                 L"A build is still running. Close the builder and stop it?",
-                L"Tekken 6 Builder", MB_YESNO | MB_ICONQUESTION) != IDYES) {
+                kWindowTitle, MB_YESNO | MB_ICONQUESTION) != IDYES) {
           return 0;
         }
         if (g_process) TerminateProcess(g_process, 1);
@@ -455,7 +457,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
   if (!RegisterClassW(&window_class)) return 1;
 
   HWND window = CreateWindowExW(0, window_class.lpszClassName,
-      L"Tekken 6 Builder", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
+      kWindowTitle, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
       WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 562, 568,
       nullptr, nullptr, instance, nullptr);
   if (!window) return 1;

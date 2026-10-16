@@ -195,6 +195,7 @@ def main() -> None:
         with source.open("rb") as stream:
             hashes[str(source.relative_to(output))] = hashlib.file_digest(stream, "sha256").hexdigest()
     manifest = {
+        "version": (repo / "VERSION").read_text(encoding="utf-8").strip(),
         "recomp_commit": revision,
         "sdk_commit": sdk_revision,
         "configuration": "Release",
