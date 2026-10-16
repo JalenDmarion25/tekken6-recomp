@@ -40,9 +40,34 @@ def main() -> None:
     parser.add_argument("--llvm-mingw-root", required=True, type=Path)
     parser.add_argument("--reuse-game", action="store_true",
                         help="Reuse staged game data after size and XEX identity checks")
+    parser.add_argument("--source-revision")
+    parser.add_argument("--sdk-revision")
+    parser.add_argument("--game-version", default="user-provided Tekken 6 XEX")
+    parser.add_argument("--backend", action="append", choices=(
+        "d3d12-rov", "vulkan-fsi", "vulkan-fbo"),
+        help="Backend to include (repeat for multiple; default includes all available)")
     args = parser.parse_args()
     build = args.build_dir.resolve()
     output = args.output.resolve()
+
+    if args.backend:
+        required_launchers = {
+            "d3d12-rov": "tekken6_low_overhead.exe",
+            "vulkan-fsi": "tekken6_vulkan.exe",
+            "vulkan-fbo": "tekken6_vulkan_fbo.exe",
+        }
+        missing = [required_launchers[backend] for backend in args.backend
+                   if not (build / required_launchers[backend]).is_file()]
+        if missing:
+            raise SystemExit("Missing selected renderer executable(s): " + ", ".join(missing))
+
+    # A rebuild into an existing destination should reflect the current
+    # checklist, rather than leave launchers from an earlier selection behind.
+    for stale_name in (
+        "tekken6.exe", "tekken6_vulkan.exe", "tekken6_vulkan_fbo.exe",
+        "tekken6_late_depth.exe", "tekken6_fused_resolve.exe",
+    ):
+        (output / stale_name).unlink(missing_ok=True)
 
     gpu_plugin = build / "rexgpu-xenos.dll"
     if not gpu_plugin.is_file():
@@ -53,20 +78,30 @@ def main() -> None:
     for name in ("tekken6.exe", "librexruntime.dll", "rexgpu-xenos.dll"):
         copy_if_changed(build / name, binary_dir / name)
     launchers = {
-        "tekken6_low_overhead.exe": "tekken6.exe",
-        "tekken6_vulkan.exe": "tekken6_vulkan.exe",
-        "tekken6_vulkan_fbo.exe": "tekken6_vulkan_fbo.exe",
-        "tekken6_late_depth.exe": "tekken6_late_depth.exe",
-        "tekken6_fused_resolve.exe": "tekken6_fused_resolve.exe",
+        "tekken6_low_overhead.exe": ("tekken6.exe", "d3d12-rov"),
+        "tekken6_vulkan.exe": ("tekken6_vulkan.exe", "vulkan-fsi"),
+        "tekken6_vulkan_fbo.exe": ("tekken6_vulkan_fbo.exe", "vulkan-fbo"),
+        "tekken6_late_depth.exe": ("tekken6_late_depth.exe", "d3d12-rov"),
+        "tekken6_fused_resolve.exe": ("tekken6_fused_resolve.exe", "d3d12-rov"),
     }
-    for source, destination in launchers.items():
+    for source, (destination, backend) in launchers.items():
+        if args.backend and backend not in args.backend:
+            continue
         built = build / source
         if built.is_file():
             copy_if_changed(built, output / destination)
             package_executables.append(output / destination)
 
     search_dirs = [build, args.llvm_mingw_root / "x86_64-w64-mingw32/bin"]
-    objdump = shutil.which("x86_64-w64-mingw32-objdump")
+    objdump_candidates = (
+        args.llvm_mingw_root / "bin" / "llvm-objdump.exe",
+        args.llvm_mingw_root / "bin" / "x86_64-w64-mingw32-objdump.exe",
+        args.llvm_mingw_root / "bin" / "x86_64-w64-mingw32-objdump",
+        args.llvm_mingw_root / "bin" / "llvm-objdump",
+        shutil.which("x86_64-w64-mingw32-objdump"),
+    )
+    objdump = next((str(candidate) for candidate in objdump_candidates
+                    if candidate and Path(candidate).is_file()), None)
     if not objdump:
         raise SystemExit("x86_64-w64-mingw32-objdump is required to check DLL dependencies")
     pending = list(binary_dir.glob("*.dll")) + package_executables
@@ -118,27 +153,40 @@ def main() -> None:
 
     for directory in ("cache", "crashes", "user"):
         (output / directory).mkdir(exist_ok=True)
-    (output / "READ ME.txt").write_text(
+    selected_backends = args.backend or [
+        backend for backend, executable in (
+            ("d3d12-rov", output / "tekken6_low_overhead.exe"),
+            ("vulkan-fsi", output / "tekken6_vulkan.exe"),
+            ("vulkan-fbo", output / "tekken6_vulkan_fbo.exe"),
+        ) if executable.is_file()
+    ]
+    readme_lines = [
         "TEKKEN 6 RECOMPILED WINDOWS BUILD\n\n"
         "Copy this folder to Windows. Keep bin and game beside the launchers.\n"
-        "tekken6.exe starts the D3D12 ROV build.\n"
         "Each launcher offers internal 3D resolutions from lightest to heaviest GPU workload: "
         "640x360, 768x432, and original 1024x576.\n"
         "The chooser also enables a 512x512 size for the 1024x1024 offscreen target by default; "
         "this can soften shadows. Uncheck it to keep the original size.\n"
-        "tekken6_vulkan.exe selects Vulkan FSI and requires fragment shader interlock.\n"
-        "tekken6_vulkan_fbo.exe selects the experimental Vulkan framebuffer path.\n"
-        "tekken6_late_depth.exe and tekken6_fused_resolve.exe enable opt-in D3D12 ROV paths.\n"
         "Unsupported render cases fall back to the standard implementation.\n"
         "Press F3 in game to show or hide the FPS and frame-time overlay.\n"
         "Only unhandled crashes write reports under crashes/<run>/.\n"
-        "The launchers share user saves and persistent caches under this folder.\n",
+        "The launchers share user saves and persistent caches under this folder.\n"
+    ]
+    if "d3d12-rov" in selected_backends:
+        readme_lines.append("tekken6.exe starts the D3D12 ROV build (widest compatibility).\n")
+    if "vulkan-fsi" in selected_backends:
+        readme_lines.append("tekken6_vulkan.exe selects Vulkan FSI and requires fragment shader interlock.\n")
+    if "vulkan-fbo" in selected_backends:
+        readme_lines.append("tekken6_vulkan_fbo.exe selects the experimental Vulkan framebuffer path.\n")
+    (output / "READ ME.txt").write_text(
+        "".join(readme_lines),
         encoding="utf-8",
     )
 
     repo = Path(__file__).resolve().parents[1]
-    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
-    sdk_revision = subprocess.check_output(
+    revision = args.source_revision or subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    sdk_revision = args.sdk_revision or subprocess.check_output(
         ["git", "-C", str(repo / "third_party/rexglue-sdk"), "rev-parse", "HEAD"],
         text=True,
     ).strip()
@@ -150,7 +198,8 @@ def main() -> None:
         "recomp_commit": revision,
         "sdk_commit": sdk_revision,
         "configuration": "Release",
-        "backends": ["d3d12-rov", "vulkan-fsi", "vulkan-fbo-experimental"],
+        "backends": selected_backends,
+        "game_version": args.game_version,
         "sha256": hashes,
     }
     (output / "build-info.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

@@ -45,6 +45,37 @@ code uses FMA3 by default for faster explicit fused operations; the resulting
 executable requires an FMA3-capable CPU. Set `-DTEKKEN6_ENABLE_FMA3=OFF` for a
 portable build.
 
+## Portable ISO builder
+
+The release can include a self-contained `Tekken 6 Builder.exe` beside its
+`builder` folder. Players extract the complete release, choose their own ISO
+with the Windows file picker, select one or more renderer checkboxes, and pick
+an output folder. The D3D12 ROV option is checked by default and is labeled as
+the widest-compatibility choice. No compiler installation or network access is
+needed on the player's PC. The ISO and its game files are never included in the
+builder release.
+
+To assemble that release folder, first build the Windows GUI and XDVDFS helper,
+then provide portable Windows distributions of LLVM-MinGW, CMake, Ninja, and
+the Python embeddable package:
+
+```sh
+cmake --build build/windows-llvm --target tekken6_builder xdvdfs_tool --parallel 2
+python3 tools/package_portable_builder.py \
+  --builder-exe build/windows-llvm/tekken6_builder.exe \
+  --llvm-mingw-root /path/to/llvm-mingw \
+  --cmake-root /path/to/cmake \
+  --ninja /path/to/ninja.exe \
+  --python-root /path/to/python-embeddable \
+  --xdvdfs-tool build/windows-llvm/tools/xdvdfs/xdvdfs_tool.exe \
+  --output out/tekken6-builder
+```
+
+Upload the complete `out/tekken6-builder` folder as a ZIP. Keep `Tekken 6
+Builder.exe` and its `builder` folder together. The folder contains the pinned
+project sources and build tools; the game itself is extracted from the player's
+ISO when they run the builder.
+
 Press **F3** in game to show or hide the FPS and frame-time overlay. It reports
 guest frame swaps independently of the host's overlay or presentation rate.
 Routine logs are disabled in the Windows launcher. Unhandled crashes write

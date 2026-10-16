@@ -34,17 +34,19 @@ if(MINGW AND TARGET rexruntime)
     # functions, not Windows import-address-table pointers. Export the title's
     # required functions explicitly while retaining normal C++ auto-exports.
     set(tekken6_import_header "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/tekken6_funcs.h")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${tekken6_import_header}")
-    file(STRINGS "${tekken6_import_header}" tekken6_imports
-        REGEX "^DECLARE_REX_FUNC\\(__imp_[A-Za-z0-9_]+\\);")
-    set(tekken6_exports "EXPORTS\n")
-    foreach(declaration IN LISTS tekken6_imports)
-        string(REGEX REPLACE "^DECLARE_REX_FUNC\\(([^)]+)\\).*" "\\1" symbol "${declaration}")
-        string(APPEND tekken6_exports "    ${symbol}\n")
-    endforeach()
-    file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tekken6-runtime-exports.def"
-        CONTENT "${tekken6_exports}" @ONLY)
-    target_sources(rexruntime PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/tekken6-runtime-exports.def")
+    if(EXISTS "${tekken6_import_header}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${tekken6_import_header}")
+        file(STRINGS "${tekken6_import_header}" tekken6_imports
+            REGEX "^DECLARE_REX_FUNC\\(__imp_[A-Za-z0-9_]+\\);")
+        set(tekken6_exports "EXPORTS\n")
+        foreach(declaration IN LISTS tekken6_imports)
+            string(REGEX REPLACE "^DECLARE_REX_FUNC\\(([^)]+)\\).*" "\\1" symbol "${declaration}")
+            string(APPEND tekken6_exports "    ${symbol}\n")
+        endforeach()
+        file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tekken6-runtime-exports.def"
+            CONTENT "${tekken6_exports}" @ONLY)
+        target_sources(rexruntime PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/tekken6-runtime-exports.def")
+    endif()
     target_link_options(rexruntime PRIVATE -Wl,--export-all-symbols)
 endif()
 
@@ -82,6 +84,12 @@ endif()
 target_link_libraries(tekken6 PRIVATE rex::ui)
 
 if(WIN32)
+    add_executable(tekken6_builder WIN32 tools/portable_builder.cpp)
+    target_link_libraries(tekken6_builder PRIVATE comctl32 comdlg32 shell32 ole32)
+    if(MINGW)
+        target_link_options(tekken6_builder PRIVATE -municode)
+    endif()
+
     function(tekken6_add_windows_launcher target_name)
         add_executable(${target_name} WIN32
             tools/portable_launcher.cpp
