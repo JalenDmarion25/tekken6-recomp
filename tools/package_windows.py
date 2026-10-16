@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 SYSTEM_DLLS = {
     "advapi32.dll", "avrt.dll", "bcrypt.dll", "cfgmgr32.dll", "comctl32.dll",
@@ -33,6 +34,9 @@ def copy_if_changed(source: Path, destination: Path) -> None:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--game-root", required=True, type=Path)
@@ -111,7 +115,11 @@ def main() -> None:
         if executable in checked:
             continue
         checked.add(executable)
-        imports = subprocess.check_output([objdump, "-p", str(executable)], text=True)
+        # Tool diagnostics may contain arbitrary bytes; they must not abort packaging.
+        imports = subprocess.check_output(
+            [objdump, "-p", str(executable)],
+            encoding="utf-8", errors="backslashreplace",
+        )
         for name in re.findall(r"DLL Name: (\S+)", imports):
             if name.lower() in SYSTEM_DLLS or name.lower().startswith(("api-ms-", "ext-ms-")):
                 continue
@@ -185,10 +193,12 @@ def main() -> None:
 
     repo = Path(__file__).resolve().parents[1]
     revision = args.source_revision or subprocess.check_output(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        encoding="utf-8", errors="backslashreplace",
+    ).strip()
     sdk_revision = args.sdk_revision or subprocess.check_output(
         ["git", "-C", str(repo / "third_party/rexglue-sdk"), "rev-parse", "HEAD"],
-        text=True,
+        encoding="utf-8", errors="backslashreplace",
     ).strip()
     hashes = {}
     for source in sorted(checked):

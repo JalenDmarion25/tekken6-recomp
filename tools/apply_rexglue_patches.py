@@ -18,12 +18,17 @@ def git(sdk: Path, *args: str, check: bool = True) -> subprocess.CompletedProces
         ["git", "-C", str(sdk), *args],
         check=check,
         text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument(
         "--sdk", type=Path,
@@ -58,7 +63,8 @@ def main() -> int:
         if not delta:
             print("No SDK source changes to save.", file=sys.stderr)
             return 2
-        patch.write_text(delta, encoding="utf-8")
+        # Preserve non-UTF-8 source bytes captured by git without changing the patch.
+        patch.write_text(delta, encoding="utf-8", errors="surrogateescape")
         print(f"Updated {patch.name}.")
         return 0
 

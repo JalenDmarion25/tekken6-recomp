@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import time
 import zipfile
 
@@ -38,7 +39,7 @@ def run(command: list[str], *, cwd: Path, log: Path, label: str,
     say(f"STEP {label}")
     if progress is not None:
         say(f"PROGRESS {progress}")
-    with log.open("a", encoding="utf-8", errors="replace") as output:
+    with log.open("a", encoding="utf-8", errors="backslashreplace") as output:
         output.write(f"\n> {' '.join(command)}\n")
         output.flush()
         process = subprocess.Popen(
@@ -47,7 +48,8 @@ def run(command: list[str], *, cwd: Path, log: Path, label: str,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            errors="replace",
+            encoding="utf-8",
+            errors="backslashreplace",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         assert process.stdout is not None
@@ -183,6 +185,12 @@ def prepare_game(xdvdfs: Path, source: Path, project: Path, work: Path,
 
 
 def main() -> int:
+    # Pipes must use the same encoding as the native GUI, regardless of locale.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+    os.environ["PYTHONUTF8"] = "1"
+    os.environ["PYTHONIOENCODING"] = "utf-8:backslashreplace"
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iso", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -207,7 +215,8 @@ def main() -> int:
         parser.error("Choose the ISO and output folder outside the builder's temporary work folder")
     work.mkdir(parents=True, exist_ok=True)
     log = builder / "build.log"
-    log.write_text(f"Tekken 6 portable build started: {time.ctime()}\n", encoding="utf-8")
+    log.write_text(f"Tekken 6 portable build started: {time.ctime()}\n",
+                   encoding="utf-8", errors="backslashreplace")
     build_info_path = builder / "build-info.json"
     build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
     project = work / "project"
@@ -336,7 +345,8 @@ def main() -> int:
             label="Generating and compiling the game", progress=25)
 
         package_command = [
-            str(builder / "python" / "python.exe"), "-I",
+            # Isolated Python ignores PYTHONUTF8/PYTHONIOENCODING from the environment.
+            str(builder / "python" / "python.exe"), "-X", "utf8", "-I",
             str(project / "tools" / "package_windows.py"),
             "--build-dir", str(build_dir), "--game-root", str(game),
             "--output", str(output), "--llvm-mingw-root", str(llvm_mingw),
@@ -356,7 +366,7 @@ def main() -> int:
         return 0
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
         message = f"ERROR {exc}"
-        with log.open("a", encoding="utf-8") as output_log:
+        with log.open("a", encoding="utf-8", errors="backslashreplace") as output_log:
             output_log.write(message + "\n")
         say(message)
         return 1

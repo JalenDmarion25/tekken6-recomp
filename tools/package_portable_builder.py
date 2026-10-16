@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -18,7 +19,8 @@ ARCHIVE_EPOCH = 315532800  # ZIP's earliest timestamp: 1980-01-01 UTC.
 
 def git_revision(path: Path) -> str:
     return subprocess.check_output(
-        ["git", "-C", str(path), "rev-parse", "HEAD"], text=True
+        ["git", "-C", str(path), "rev-parse", "HEAD"],
+        encoding="utf-8", errors="backslashreplace",
     ).strip()
 
 
@@ -68,6 +70,9 @@ def apply_sdk_patch(sdk: Path) -> None:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--builder-exe", required=True, type=Path)
     parser.add_argument("--llvm-mingw-root", required=True, type=Path)

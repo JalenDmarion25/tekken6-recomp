@@ -55,6 +55,9 @@ the widest-compatibility choice. No compiler installation or network access is
 needed on the player's PC. The ISO and its game files are never included in the
 builder release.
 
+Build logs use UTF-8 independently of the Windows system language. Unexpected
+bytes in tool diagnostics are escaped so they cannot stop the build.
+
 To assemble that release folder, first build the Windows GUI and XDVDFS helper,
 then provide LLVM-MinGW 20260908 MSVCRT x64 (Clang 23.1.1), portable CMake,
 Ninja, and the Python embeddable package. The bundled compiler's fixed
