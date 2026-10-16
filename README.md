@@ -56,11 +56,13 @@ needed on the player's PC. The ISO and its game files are never included in the
 builder release.
 
 To assemble that release folder, first build the Windows GUI and XDVDFS helper,
-then provide portable Windows distributions of LLVM-MinGW, CMake, Ninja, and
-the Python embeddable package:
+then provide LLVM-MinGW 20260908 MSVCRT x64 (Clang 23.1.1), portable CMake,
+Ninja, and the Python embeddable package. The bundled compiler's fixed
+capabilities are supplied by `cmake/windows-portable-capabilities.cmake` so
+players do not repeat the compiler feature probes.
 
 ```sh
-cmake --build build/windows-llvm --target tekken6_builder xdvdfs_tool --parallel 2
+cmake --build build/windows-llvm --target tekken6_builder xdvdfs_tool --parallel "$(nproc)"
 python3 tools/package_portable_builder.py \
   --builder-exe build/windows-llvm/tekken6_builder.exe \
   --llvm-mingw-root /path/to/llvm-mingw \
@@ -77,6 +79,11 @@ project sources and build tools; the game itself is extracted from the player's
 ISO when they run the builder. Project sources stay in one archive to reduce the
 number of files in the initial unzip; the builder unpacks them automatically
 when the first build starts.
+
+Game compilation uses the available CPU threads, limited by available memory.
+After a successful build, temporary sources, extracted game copies, and compiler
+outputs are deleted automatically. The activity indicator keeps animating while
+the build runs, and the Build button stays disabled after completion.
 
 Press **F3** in game to show or hide the FPS and frame-time overlay. It reports
 guest frame swaps independently of the host's overlay or presentation rate.

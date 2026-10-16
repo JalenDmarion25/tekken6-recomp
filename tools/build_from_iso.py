@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
+import ctypes
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import time
 import zipfile
@@ -31,7 +34,7 @@ def sha256(path: Path) -> str:
 
 
 def run(command: list[str], *, cwd: Path, log: Path, label: str,
-        progress: int | None = None) -> None:
+        progress: int | None = None, stream_output: bool = True) -> None:
     say(f"STEP {label}")
     if progress is not None:
         say(f"PROGRESS {progress}")
@@ -48,13 +51,59 @@ def run(command: list[str], *, cwd: Path, log: Path, label: str,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         assert process.stdout is not None
+        recent_output: deque[str] = deque(maxlen=25)
         for line in process.stdout:
             output.write(line)
             output.flush()
-            say(line.rstrip("\r\n"))
+            recent_output.append(line.rstrip("\r\n"))
+            if stream_output:
+                say(recent_output[-1])
         code = process.wait()
     if code:
+        if not stream_output:
+            for line in recent_output:
+                say(line)
         raise RuntimeError(f"{label} failed with exit code {code}. See builder\\build.log.")
+
+
+def build_parallelism() -> int:
+    workers = max(1, os.process_cpu_count() or os.cpu_count() or 2)
+    if os.name == "nt":
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [
+                ("length", ctypes.c_uint32), ("load", ctypes.c_uint32),
+                ("total_physical", ctypes.c_uint64), ("available_physical", ctypes.c_uint64),
+                ("total_pagefile", ctypes.c_uint64), ("available_pagefile", ctypes.c_uint64),
+                ("total_virtual", ctypes.c_uint64), ("available_virtual", ctypes.c_uint64),
+                ("available_extended_virtual", ctypes.c_uint64),
+            ]
+
+        memory = MemoryStatus()
+        memory.length = ctypes.sizeof(memory)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)):
+            gibibyte = 1024 ** 3
+            memory_workers = max(1, (memory.available_physical - gibibyte) // gibibyte)
+            workers = min(workers, memory_workers)
+    return workers
+
+
+def clean_work_directory(work: Path) -> None:
+    def remove_readonly(remove, path, error):
+        if not isinstance(error, PermissionError):
+            raise error
+        os.chmod(path, stat.S_IWRITE)
+        remove(path)
+
+    for attempt in range(5):
+        try:
+            shutil.rmtree(work, onexc=remove_readonly)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(0.25 * (attempt + 1))
 
 
 def list_iso(xdvdfs: Path, iso: Path, listing: Path, work: Path, log: Path) -> str:
@@ -154,6 +203,8 @@ def main() -> int:
         parser.error("select at least one renderer")
 
     work = builder / "work"
+    if output.is_relative_to(work) or source.is_relative_to(work):
+        parser.error("Choose the ISO and output folder outside the builder's temporary work folder")
     work.mkdir(parents=True, exist_ok=True)
     log = builder / "build.log"
     log.write_text(f"Tekken 6 portable build started: {time.ctime()}\n", encoding="utf-8")
@@ -215,10 +266,12 @@ def main() -> int:
 
     try:
         game, version = prepare_game(xdvdfs, source, project, work, log)
+        workers = build_parallelism()
         build_dir = work / "windows-build"
         use_vulkan = args.vulkan_fsi or args.vulkan_fbo
         configure_command = [
-            str(cmake), "-S", str(project), "-B", str(build_dir), "-G", "Ninja",
+            str(cmake), "-C", str(project / "cmake" / "windows-portable-capabilities.cmake"),
+            "-S", str(project), "-B", str(build_dir), "-G", "Ninja",
             f"-DCMAKE_MAKE_PROGRAM={ninja}",
             f"-DPYTHON_EXECUTABLE={builder / 'python' / 'python.exe'}",
             "-DCMAKE_SUPPRESS_REGENERATION=ON",
@@ -253,9 +306,8 @@ def main() -> int:
         had_import_header = import_header.is_file()
         if not configured:
             run(configure_command, cwd=project, log=log,
-                label="Preparing the Windows build", progress=18)
+                label="Preparing the Windows build", progress=18, stream_output=False)
 
-        workers = max(1, min(3, (os.cpu_count() or 2) - 1))
         run([str(cmake), "--build", str(build_dir), "--target", "tekken6_codegen",
              "--parallel", str(workers)], cwd=project, log=log,
             label="Generating game code", progress=22)
@@ -264,11 +316,11 @@ def main() -> int:
         # Reconfigure once after first generation so the runtime .def is included.
         if not configured and not had_import_header:
             run(configure_command, cwd=project, log=log,
-                label="Finishing Windows build setup", progress=24)
+                label="Finishing Windows build setup", progress=24, stream_output=False)
         build_dir.mkdir(parents=True, exist_ok=True)
         config_marker.write_text(config_signature + "\n", encoding="utf-8")
 
-        targets = ["xdvdfs_tool", "tekken6"]
+        targets = ["tekken6"]
         backends = []
         if args.d3d12_rov:
             targets.append("tekken6_low_overhead")
@@ -296,11 +348,17 @@ def main() -> int:
             package_command.extend(("--backend", backend))
         run(package_command, cwd=project, log=log, label="Packaging the Windows game",
             progress=95)
+        say("STEP Removing temporary build files")
+        say("PROGRESS 98")
+        clean_work_directory(work)
         say("PROGRESS 100")
         say(f"DONE {output}")
         return 0
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
-        say(f"ERROR {exc}")
+        message = f"ERROR {exc}"
+        with log.open("a", encoding="utf-8") as output_log:
+            output_log.write(message + "\n")
+        say(message)
         return 1
 
 

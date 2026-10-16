@@ -21,6 +21,7 @@ enum : int {
   kVulkanFsiCheck,
   kVulkanFboCheck,
   kBuildButton,
+  kActivity,
   kProgress,
   kLog,
 };
@@ -32,12 +33,15 @@ HWND g_d3d12_check = nullptr;
 HWND g_vulkan_fsi_check = nullptr;
 HWND g_vulkan_fbo_check = nullptr;
 HWND g_build_button = nullptr;
+HWND g_activity = nullptr;
 HWND g_progress = nullptr;
 HWND g_log = nullptr;
 HANDLE g_process = nullptr;
 HANDLE g_pipe_read = nullptr;
 std::string g_pending_output;
 bool g_building = false;
+bool g_build_finished = false;
+unsigned g_activity_frame = 0;
 
 std::wstring ModulePath() {
   std::vector<wchar_t> buffer(32768);
@@ -105,6 +109,37 @@ void SetBuildControlsEnabled(bool enabled) {
   EnableWindow(g_vulkan_fsi_check, enabled);
   EnableWindow(g_vulkan_fbo_check, enabled);
   EnableWindow(g_build_button, enabled);
+}
+
+void DrawActivity(const DRAWITEMSTRUCT& item) {
+  FillRect(item.hDC, &item.rcItem, GetSysColorBrush(COLOR_BTNFACE));
+  if (!g_building) return;
+  constexpr POINT positions[] = {
+      {0, -8}, {6, -6}, {8, 0}, {6, 6},
+      {0, 8}, {-6, 6}, {-8, 0}, {-6, -6},
+  };
+  const int center_x = (item.rcItem.left + item.rcItem.right) / 2;
+  const int center_y = (item.rcItem.top + item.rcItem.bottom) / 2;
+  const COLORREF foreground = GetSysColor(COLOR_HIGHLIGHT);
+  const COLORREF background = GetSysColor(COLOR_BTNFACE);
+  for (unsigned index = 0; index < ARRAYSIZE(positions); ++index) {
+    const unsigned strength = 8 - ((index + 8 - g_activity_frame) % 8);
+    const auto blend = [strength](unsigned front, unsigned back) {
+      return static_cast<BYTE>((front * strength + back * (8 - strength)) / 8);
+    };
+    HBRUSH brush = CreateSolidBrush(RGB(
+        blend(GetRValue(foreground), GetRValue(background)),
+        blend(GetGValue(foreground), GetGValue(background)),
+        blend(GetBValue(foreground), GetBValue(background))));
+    HGDIOBJ old_brush = SelectObject(item.hDC, brush);
+    HGDIOBJ old_pen = SelectObject(item.hDC, GetStockObject(NULL_PEN));
+    const int x = center_x + positions[index].x;
+    const int y = center_y + positions[index].y;
+    Ellipse(item.hDC, x - 2, y - 2, x + 3, y + 3);
+    SelectObject(item.hDC, old_pen);
+    SelectObject(item.hDC, old_brush);
+    DeleteObject(brush);
+  }
 }
 
 void AppendLog(const std::wstring& line) {
@@ -199,6 +234,7 @@ void BrowseOutput() {
 }
 
 bool StartBuild() {
+  if (g_building || g_build_finished) return false;
   const std::wstring iso = ReadText(g_iso_edit);
   std::wstring output = ReadText(g_output_edit);
   if (iso.empty() || !Exists(iso)) {
@@ -278,6 +314,8 @@ bool StartBuild() {
   CloseHandle(process.hThread);
   g_process = process.hProcess;
   g_building = true;
+  g_activity_frame = 0;
+  InvalidateRect(g_activity, nullptr, FALSE);
   g_pending_output.clear();
   SendMessageW(g_progress, PBM_SETPOS, 0, 0);
   SetBuildControlsEnabled(false);
@@ -302,11 +340,15 @@ void PollBuild() {
   g_pipe_read = nullptr;
   KillTimer(g_window, 1);
   g_building = false;
-  SetBuildControlsEnabled(true);
+  g_build_finished = exit_code == 0;
+  InvalidateRect(g_activity, nullptr, FALSE);
   if (exit_code == 0) {
+    SetBuildControlsEnabled(false);
+    SetWindowTextW(g_build_button, L"Finished");
     SendMessageW(g_progress, PBM_SETPOS, 100, 0);
     AppendLog(L"Build finished. Open the selected output folder to play.");
   } else {
+    SetBuildControlsEnabled(true);
     AppendLog(L"Build failed. The full details are in builder\\build.log.");
   }
 }
@@ -341,7 +383,9 @@ void CreateUi() {
 
   g_build_button = AddControl(L"BUTTON", L"Build", BS_DEFPUSHBUTTON | WS_TABSTOP,
                               18, 328, 110, 32, kBuildButton);
-  g_progress = AddControl(PROGRESS_CLASSW, L"", 0, 140, 333, 388, 24, kProgress);
+  g_activity = AddControl(L"STATIC", L"", SS_OWNERDRAW,
+                          136, 333, 24, 24, kActivity);
+  g_progress = AddControl(PROGRESS_CLASSW, L"", 0, 172, 333, 356, 24, kProgress);
   SendMessageW(g_progress, PBM_SETRANGE32, 0, 100);
   g_log = AddControl(L"EDIT", L"", WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL |
                      ES_READONLY | WS_VSCROLL, 18, 374, 510, 145, kLog);
@@ -363,8 +407,18 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam,
       }
       break;
     case WM_TIMER:
-      if (wparam == 1) PollBuild();
+      if (wparam == 1) {
+        g_activity_frame = (g_activity_frame + 1) % 8;
+        InvalidateRect(g_activity, nullptr, FALSE);
+        PollBuild();
+      }
       return 0;
+    case WM_DRAWITEM:
+      if (wparam == kActivity) {
+        DrawActivity(*reinterpret_cast<const DRAWITEMSTRUCT*>(lparam));
+        return TRUE;
+      }
+      break;
     case WM_CLOSE:
       if (g_building) {
         if (MessageBoxW(window,
@@ -396,6 +450,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
   window_class.hInstance = instance;
   window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
   window_class.hIcon = LoadIconW(nullptr, MAKEINTRESOURCEW(32512));
+  window_class.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
   window_class.lpszClassName = L"Tekken6PortableBuilderWindow";
   if (!RegisterClassW(&window_class)) return 1;
 

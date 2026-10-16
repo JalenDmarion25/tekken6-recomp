@@ -13,12 +13,6 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SDK_SUBMODULES = (
-    "cli11", "libmspack", "FFmpeg", "tomlplusplus", "simde", "xxHash",
-    "spdlog", "fmt", "utfcpp", "imgui", "sdl3", "inja", "o1heap",
-    "vulkan-headers", "vulkan-memory-allocator", "spirv-headers",
-    "spirv-tools", "glslang",
-)
 ARCHIVE_EPOCH = 315532800  # ZIP's earliest timestamp: 1980-01-01 UTC.
 
 
@@ -115,10 +109,6 @@ def main() -> None:
                         ignore=lambda path, names: ignore_project(path, names, ROOT),
                         copy_function=shutil.copy)
         apply_sdk_patch(staged_project / "third_party" / "rexglue-sdk")
-        sdk = staged_project / "third_party" / "rexglue-sdk"
-        for marker in (sdk, *(sdk / "thirdparty" / name for name in SDK_SUBMODULES)):
-            if marker.is_dir():
-                (marker / ".git").mkdir(exist_ok=True)
         write_project_archive(staged_project, builder / "project.zip")
 
     shutil.copytree(args.llvm_mingw_root, builder / "llvm-mingw",
@@ -150,7 +140,8 @@ def main() -> None:
         "creates a Windows package in the folder you choose. It includes no game "
         "ISO or game data. Keep the builder folder beside the executable.\n\n"
         "The first build needs several gigabytes of free disk space and can take "
-        "a while. Internet access is not needed after downloading the release.\n",
+        "a while. Temporary build files are removed after a successful build. "
+        "Internet access is not needed after downloading the release.\n",
         encoding="utf-8",
     )
     print(f"Portable builder package created at {output}")
