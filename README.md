@@ -73,7 +73,7 @@ python3 tools/package_portable_builder.py \
   --output build/Tekken6-Builder-Windows
 ```
 
-Release versions are set in `VERSION`; the builder window, Windows file details,
+Release versions are set in `VERSION.txt`; the builder window, Windows file details,
 and package manifests use that version. For 0.9.4, archive the complete
 `build/Tekken6-Builder-Windows` folder as `Tekken6-Builder-Windows-0.9.4.zip`.
 Keep `Tekken 6 Builder.exe` and its `builder` folder together. The folder contains

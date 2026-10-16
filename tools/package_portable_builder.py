@@ -124,7 +124,7 @@ def main() -> None:
     shutil.copy2(args.xdvdfs_tool, builder / "bin" / "xdvdfs_tool.exe")
 
     metadata = {
-        "version": (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
+        "version": (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip(),
         "recomp_revision": git_revision(ROOT),
         "sdk_revision": git_revision(ROOT / "third_party" / "rexglue-sdk"),
     }
