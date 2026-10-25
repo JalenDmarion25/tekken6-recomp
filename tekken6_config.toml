@@ -35,6 +35,56 @@ address = 0x82219A28
 name = "ApplyTekkenInternalResolution"
 registers = ["r11", "r10"]
 
+[[midasm_hook]]
+address = 0x822680F0
+name = "TraceTekkenButtons"
+registers = ["r12", "r3"]
+
+[[midasm_hook]]
+address = 0x82268118
+name = "TraceTekkenButtons"
+registers = ["r12", "r3"]
+
+[[midasm_hook]]
+address = 0x82268168
+name = "TraceTekkenButtons"
+registers = ["r12", "r3"]
+
+[[midasm_hook]]
+address = 0x82268190
+name = "TraceTekkenButtons"
+registers = ["r12", "r3"]
+
+# Capture held input from the active practice controller.
+[[midasm_hook]]
+address = 0x824604B0
+name = "CapturePracticeHeld"
+registers = ["r3"]
+
+# Capture Down when the reset button is first pressed.
+[[midasm_hook]]
+address = 0x824604C8
+name = "CapturePracticeResetPress"
+registers = ["r3"]
+
+# Enable the modification only for the observed practice reset path.
+[[midasm_hook]]
+address = 0x82464B30
+name = "BeginPracticeSideReset"
+registers = ["r3"]
+
+# Remember the player-one reference before the game selects its subject.
+[[midasm_hook]]
+address = 0x824617D0
+name = "RememberPracticePlayerOne"
+registers = ["r29"]
+
+# Select the reversed pair before positions and facing are calculated.
+[[midasm_hook]]
+address = 0x82461800
+name = "ApplyPracticeResetSide"
+registers = ["r29", "r27", "r4"]
+
 # The offscreen target is resource 0x20000004, initialized at 1024x1024.
 # The launcher can lower it while leaving all other guest resources unchanged.
 [[midasm_hook]]
@@ -44,6 +94,47 @@ registers = ["r3", "r4", "r5"]
 
 # RexGlue's validation reports these branch targets as tail/secondary
 # functions, while the existing independent XenonRecomp pass already proves
+# Log processed controller buttons before updating the previous-state field.
+[[midasm_hook]]
+address = 0x82536150
+name = "TraceTekkenButtons"
+registers = ["r31", "r11"]
+
+[[midasm_hook]]
+address = 0x8229989C
+name = "TraceTekkenStateCommand"
+registers = ["r12", "r3"]
+
+# Give the first completed position and facing to the other fighter.
+[[midasm_hook]]
+address = 0x82461A44
+name = "RedirectPracticeFirstPlacement"
+registers = ["r3", "r27"]
+
+# Give the second completed position and facing to the first fighter.
+[[midasm_hook]]
+address = 0x82461A68
+name = "RedirectPracticeSecondPlacement"
+registers = ["r3", "r29"]
+
+# Scope camera changes to the practice reset's camera call.
+[[midasm_hook]]
+address = 0x8229A4D0
+name = "BeginPracticeCameraReset"
+registers = ["r6"]
+
+# Select the opposite candidate camera position.
+[[midasm_hook]]
+address = 0x82314578
+name = "SelectPracticeResetCamera"
+registers = ["r28", "r31"]
+
+# Stop overriding selection when the camera reset returns.
+[[midasm_hook]]
+address = 0x8229A4D4
+name = "EndPracticeCameraReset"
+registers = ["r24"]
+
 # each is a real emitted function start in this exact XEX.
 [functions]
 # These vector state helpers are high-call-count, audited leaf routines. Their

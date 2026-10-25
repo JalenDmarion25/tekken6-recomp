@@ -1,0 +1,20 @@
+{
+  "version": "0.9.4",
+  "recomp_commit": "3efad76564e6cf143e0f79685e0dafe143b4c44d",
+  "sdk_commit": "0c7b01a0ac0479801757507d80533f662fa0815d",
+  "configuration": "Release",
+  "backends": [
+    "d3d12-rov"
+  ],
+  "game_version": "Tekken 6 (Europe/USA) Rev 1",
+  "sha256": {
+    "bin\\libc++.dll": "d29dd35dd2587b4dc02012c5b73f25d7de296ea4013997c1847ec364f3bb6182",
+    "bin\\librexruntime.dll": "37c1f6b8f05bb423beb471619a252d4c5e2c878f03146ea23b5c967d1e38d0c0",
+    "bin\\libunwind.dll": "9e4d056bc732444ad7424256b878d72f82e4e7b11ba02092b6bfbcad06636d75",
+    "bin\\rexgpu-xenos.dll": "5c204635899d4bf885e7f26408e952ef5171a76ca94d6a71a942b86f7eefb299",
+    "bin\\tekken6.exe": "bf7c88be396cfcc1e9a4804c8f2e9d53d698c39d47f21aa7cfc29ea5993e3012",
+    "libc++.dll": "d29dd35dd2587b4dc02012c5b73f25d7de296ea4013997c1847ec364f3bb6182",
+    "libunwind.dll": "9e4d056bc732444ad7424256b878d72f82e4e7b11ba02092b6bfbcad06636d75",
+    "tekken6.exe": "97b62726c9aeec49de65708d12185d4f23a64fbbf69c63da6c7778b88cc2a01d"
+  }
+}

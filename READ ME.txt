@@ -1,0 +1,10 @@
+TEKKEN 6 RECOMPILED WINDOWS BUILD
+
+Copy this folder to Windows. Keep bin and game beside the launchers.
+Each launcher offers internal 3D resolutions from lightest to heaviest GPU workload: 640x360, 768x432, and original 1024x576.
+The chooser also enables a 512x512 size for the 1024x1024 offscreen target by default; this can soften shadows. Uncheck it to keep the original size.
+Unsupported render cases fall back to the standard implementation.
+Press F3 in game to show or hide the FPS and frame-time overlay.
+Only unhandled crashes write reports under crashes/<run>/.
+The launchers share user saves and persistent caches under this folder.
+tekken6.exe starts the D3D12 ROV build (widest compatibility).
