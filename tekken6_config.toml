@@ -109,7 +109,12 @@ registers = ["r12", "r3"]
 [[midasm_hook]]
 address = 0x82461A44
 name = "RedirectPracticeFirstPlacement"
-registers = ["r3", "r27"]
+registers = ["r3", "r27", "r4"]
+
+[[midasm_hook]]
+address = 0x8242E2E8
+name = "InstallPracticeRageMenu"
+registers = ["r9", "r8"]
 
 # Give the second completed position and facing to the first fighter.
 [[midasm_hook]]
@@ -129,13 +134,165 @@ address = 0x82314578
 name = "SelectPracticeResetCamera"
 registers = ["r28", "r31"]
 
+# Override the selected value's color before the menu applies it.
+[[midasm_hook]]
+address = 0x822FEF2C
+name = "StylePracticeRageNormal"
+registers = ["r31", "r4"]
+
 # Stop overriding selection when the camera reset returns.
 [[midasm_hook]]
 address = 0x8229A4D4
 name = "EndPracticeCameraReset"
 registers = ["r24"]
 
+# Observe the fighter flags immediately after the health gauge loads them.
+[[midasm_hook]]
+address = 0x822ECC1C
+name = "TraceTekkenRage"
+registers = ["r11", "r10"]
+
+
+# Capture the practice owner and its selected fighter pair.
+[[midasm_hook]]
+address = 0x82392710
+name = "BeginPracticeRage"
+registers = ["r3", "r4", "r5"]
+
+# Clear the override when the matching practice object is destroyed.
+[[midasm_hook]]
+address = 0x82391AF8
+name = "EndPracticeRage"
+registers = ["r3"]
+
+[[midasm_hook]]
+address = 0x8229474C
+name = "ApplyPracticeRageMenuThreshold"
+registers = ["r28", "r29", "r31"]
+
+# Left: decrement the selected option.
+[[midasm_hook]]
+address = 0x82436938
+name = "TracePracticeMenuValue"
+registers = ["r11", "r10"]
+
+# Left: wrap to the last value.
+[[midasm_hook]]
+address = 0x82436954
+name = "TracePracticeMenuValue"
+registers = ["r11", "r10"]
+
+# Right: increment the selected option.
+[[midasm_hook]]
+address = 0x82436970
+name = "TracePracticeMenuValue"
+registers = ["r11", "r10"]
+
+# Right: wrap to the first value.
+[[midasm_hook]]
+address = 0x82436988
+name = "TracePracticeMenuValue"
+registers = ["r11", "r20"]
+
 # each is a real emitted function start in this exact XEX.
+# BEGIN QUICK SELECT TRACE
+[[midasm_hook]]
+address = 0x8242E2F8
+name = "TraceQuickSelectMenu"
+registers = ["r3", "r4", "r5", "r6"]
+
+[[midasm_hook]]
+address = 0x8239FA20
+name = "TraceQuickSelectCharacterScreen"
+registers = ["r3"]
+
+[[midasm_hook]]
+address = 0x8238EDB0
+name = "TraceQuickSelectMenuClose"
+registers = ["r3"]
+
+[[midasm_hook]]
+address = 0x82392714
+name = "TraceQuickSelectPractice"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+address = 0x822A24C8
+name = "TraceQuickSelectFighterSetting"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+address = 0x822A24D8
+name = "TraceQuickSelectFighterId"
+registers = ["r3", "r4"]
+
+# END QUICK SELECT TRACE
+
+# BEGIN STAGE LOAD TRACE
+[[midasm_hook]]
+address = 0x823424A8
+name = "TraceStageBankRequest"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82342840
+name = "TraceStageBankLoad"
+registers = ["r3"]
+
+# END STAGE LOAD TRACE
+
+
+
+# BEGIN QUICK SELECT APPLY TEST
+[[midasm_hook]]
+address = 0x82431F20
+name = "QuickSelectMenuOpening"
+registers = ["r3"]
+
+[[midasm_hook]]
+address = 0x82435DF0
+name = "QuickSelectSyncMenu"
+registers = ["r3"]
+
+[[midasm_hook]]
+address = 0x8242BFD8
+name = "QuickSelectApplyAction"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82245018
+name = "QuickSelectRedirectMode"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x822518D8
+name = "QuickSelectBypassScreen"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82245090
+name = "QuickSelectLoadCharacter"
+registers = ["r3", "r4", "r5"]
+
+[[midasm_hook]]
+address = 0x82269868
+name = "QuickSelectLoadStage"
+registers = ["r3", "r4"]
+
+[[midasm_hook]]
+address = 0x82392718
+name = "QuickSelectObservePractice"
+registers = ["r3", "r4", "r5"]
+
+# END QUICK SELECT APPLY TEST
+
+# BEGIN QUICK SELECT AUTO CHARACTER V4
+[[midasm_hook]]
+address = 0x822F0F88
+name = "QuickSelectAutoConfirmCharacter"
+registers = ["r3", "r4", "r5", "r7"]
+# END QUICK SELECT AUTO CHARACTER V4
+
 [functions]
 # These vector state helpers are high-call-count, audited leaf routines. Their
 # non-volatile VMX register values are copied into locals and written back at

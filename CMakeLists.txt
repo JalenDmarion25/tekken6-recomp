@@ -130,3 +130,6 @@ if(WIN32 AND REXGLUE_USE_VULKAN)
     target_compile_definitions(tekken6_vulkan_fbo PRIVATE
         TEKKEN6_LOW_OVERHEAD=1 TEKKEN6_VULKAN=1 TEKKEN6_VULKAN_FBO=1)
 endif()
+
+# Keep the native practice menu at 16 safely initialized rows.
+include(cmake/expanded_menu_rows.cmake)

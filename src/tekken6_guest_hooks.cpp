@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <rex/runtime.h>
+#include <cstring>
 
 thread_local bool redirectPracticePlacement = false;
 thread_local bool rightSideCameraRequested = false;
@@ -87,8 +89,35 @@ void TraceTekkenStateCommand(PPCRegister &caller, PPCRegister &command)
 
 namespace
 {
+
+  enum class PracticeResetPosition : uint32_t
+  {
+    Center,
+    ReversedCenter,
+    LeftWall,
+    RightWall
+  };
+
+  std::atomic<PracticeResetPosition> preferredResetPosition{
+      PracticeResetPosition::Center};
+
+  std::atomic<PracticeResetPosition> pendingResetPosition{
+      PracticeResetPosition::Center};
+
+  thread_local PracticeResetPosition activeResetPosition =
+      PracticeResetPosition::Center;
+
   std::atomic<uint32_t> practiceHeld{0};
+  std::atomic<bool> preferredRightSideReset{false};
   std::atomic<bool> pendingRightSideReset{false};
+
+  std::atomic<uint32_t> practiceRageOwner{0};
+  std::atomic<uint32_t> practiceRageP1{0};
+  std::atomic<uint32_t> practiceRageP2{0};
+
+  // Independent Rage settings; false means normal game behavior.
+  std::atomic<bool> practiceP1Rage{false};
+  std::atomic<bool> practiceP2Rage{false};
 
   thread_local bool applyRightSideReset = false;
   thread_local uint32_t practicePlayerOne = 0;
@@ -119,21 +148,41 @@ void CapturePracticeHeld(PPCRegister &held)
   practiceHeld.store(held.u32, std::memory_order_relaxed);
 }
 
+void TracePracticeWallSample(uint32_t held);
+
 void CapturePracticeResetPress(PPCRegister &pressed)
 {
+  constexpr uint32_t up = 0x00000001;
   constexpr uint32_t down = 0x00000002;
+  constexpr uint32_t left = 0x00000004;
+  constexpr uint32_t right = 0x00000008;
   constexpr uint32_t resetModifier = 0x00000020;
   constexpr uint32_t resetButton = 0x00001000;
 
   const uint32_t held =
       practiceHeld.load(std::memory_order_relaxed);
 
-  if ((held & resetModifier) && (pressed.u32 & resetButton))
-  {
-    // Latch the direction now so releasing during the reset delay is OK.
-    pendingRightSideReset.store(
-        (held & down) != 0, std::memory_order_relaxed);
-  }
+  if (!(held & resetModifier) || !(pressed.u32 & resetButton))
+    return;
+
+  PracticeResetPosition position =
+      preferredResetPosition.load(std::memory_order_relaxed);
+
+  if (held & up)
+    position = PracticeResetPosition::Center;
+  else if (held & down)
+    position = PracticeResetPosition::ReversedCenter;
+  else if (held & left)
+    position = PracticeResetPosition::LeftWall;
+  else if (held & right)
+    position = PracticeResetPosition::RightWall;
+
+  preferredResetPosition.store(position, std::memory_order_relaxed);
+  pendingResetPosition.store(position, std::memory_order_relaxed);
+
+  pendingRightSideReset.store(
+      position == PracticeResetPosition::ReversedCenter,
+      std::memory_order_relaxed);
 }
 
 void RememberPracticePlayerOne(PPCRegister &playerOne)
@@ -143,6 +192,15 @@ void RememberPracticePlayerOne(PPCRegister &playerOne)
 
 void BeginPracticeSideReset(PPCRegister &command)
 {
+
+  activeResetPosition =
+      pendingResetPosition.exchange(
+          PracticeResetPosition::Center,
+          std::memory_order_relaxed);
+
+  if (command.u32 != 13)
+    activeResetPosition = PracticeResetPosition::Center;
+
   applyRightSideReset =
       pendingRightSideReset.exchange(false, std::memory_order_relaxed) && command.u32 == 13;
 
@@ -174,15 +232,72 @@ void ApplyPracticeResetSide(
   rightSideCameraRequested = redirectPracticePlacement;
 }
 
-void RedirectPracticeFirstPlacement(
-    PPCRegister &target, PPCRegister &other)
+void ApplyNohWallResetPositions(PPCRegister &firstPosition)
 {
+  const PracticeResetPosition position = activeResetPosition;
+  activeResetPosition = PracticeResetPosition::Center;
+
+  if (position != PracticeResetPosition::LeftWall &&
+      position != PracticeResetPosition::RightWall)
+    return;
+
+  // Explicit opt-in for the Noh Theater prototype.
+  const char *enabled = std::getenv("TEKKEN6_NOH_WALL_RESET");
+  if (!enabled || std::strcmp(enabled, "1") != 0)
+    return;
+
+  auto *runtime = rex::Runtime::instance();
+  if (!runtime || !firstPosition.u32)
+    return;
+
+  uint8_t *base = runtime->virtual_membase();
+  if (!base)
+    return;
+
+  auto writeFloat = [&](uint32_t address, float value)
+  {
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof(bits));
+
+    uint8_t *p = base + address;
+    p[0] = uint8_t(bits >> 24);
+    p[1] = uint8_t(bits >> 16);
+    p[2] = uint8_t(bits >> 8);
+    p[3] = uint8_t(bits);
+  };
+
+  // The reset routine uses adjacent 16-byte position buffers:
+  // first at stack +96, second at stack +112.
+  const uint32_t first = firstPosition.u32;
+  const uint32_t second = first + 16;
+
+  if (position == PracticeResetPosition::LeftWall)
+  {
+    writeFloat(first, -8498.0107f);
+    writeFloat(first + 8, -77.1956f);
+    writeFloat(second, -6527.3008f);
+    writeFloat(second + 8, -65.8241f);
+  }
+  else
+  {
+    writeFloat(first, 6496.6333f);
+    writeFloat(first + 8, 30.8987f);
+    writeFloat(second, 8505.2480f);
+    writeFloat(second + 8, 34.8247f);
+  }
+}
+
+void RedirectPracticeFirstPlacement(
+    PPCRegister &target,
+    PPCRegister &other,
+    PPCRegister &firstPosition)
+{
+  ApplyNohWallResetPositions(firstPosition);
+
   LogPracticeSide("first-before", target.u32, other.u32);
 
   if (redirectPracticePlacement)
-  {
     target = other;
-  }
 
   LogPracticeSide("first-after", target.u32, other.u32);
 }
@@ -258,3 +373,182 @@ void EndPracticeCameraReset(PPCRegister &command)
   insidePracticeCameraReset = false;
   rightSideCameraRequested = false;
 }
+
+void TraceTekkenRage(PPCRegister &fighter, PPCRegister &flags)
+{
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
+
+  static std::FILE *log = std::fopen("rage-debug.txt", "w");
+  if (!log)
+    return;
+
+  static std::map<uint32_t, bool> previous;
+
+  const uint32_t address = fighter.u32;
+  const bool active = (flags.u32 & 0x800u) != 0;
+
+  const auto entry = previous.emplace(address, active);
+  if (!entry.second && entry.first->second == active)
+    return;
+
+  entry.first->second = active;
+
+  std::fprintf(log, "fighter=%08X rage=%u flags=%08X\n",
+               static_cast<unsigned>(address),
+               static_cast<unsigned>(active),
+               static_cast<unsigned>(flags.u32));
+  std::fflush(log);
+}
+
+void BeginPracticeRage(
+    PPCRegister &owner,
+    PPCRegister &playerOne,
+    PPCRegister &playerTwo)
+{
+  practiceRageOwner.store(0, std::memory_order_release);
+
+  const uint32_t p1 = playerOne.u32;
+  const uint32_t p2 = playerTwo.u32;
+
+  if (!owner.u32 || !p1 || !p2 || p1 == p2)
+    return;
+
+  practiceRageP1.store(p1, std::memory_order_relaxed);
+  practiceRageP2.store(p2, std::memory_order_relaxed);
+  practiceRageOwner.store(owner.u32, std::memory_order_release);
+
+  LogPracticeSide("rage-practice-enter", p1, p2);
+}
+
+void EndPracticeRage(PPCRegister &owner)
+{
+  uint32_t expected = owner.u32;
+
+  if (expected &&
+      practiceRageOwner.compare_exchange_strong(
+          expected, 0, std::memory_order_acq_rel))
+  {
+    LogPracticeSide("rage-practice-exit", owner.u32, 0);
+  }
+}
+
+void ApplyPracticeRageThreshold(
+    PPCRegister &fighter,
+    PPCRegister &health,
+    PPCRegister &threshold)
+{
+  if (!practiceRageOwner.load(std::memory_order_acquire))
+    return;
+
+  bool enabled = false;
+
+  if (fighter.u32 ==
+      practiceRageP1.load(std::memory_order_relaxed))
+  {
+    enabled = practiceP1Rage.load(std::memory_order_relaxed);
+  }
+  else if (fighter.u32 ==
+           practiceRageP2.load(std::memory_order_relaxed))
+  {
+    enabled = practiceP2Rage.load(std::memory_order_relaxed);
+  }
+
+  if (!enabled || health.s32 <= 0)
+    return;
+
+  // Make the existing comparison qualify this living fighter for Rage.
+  // This changes the comparison threshold, not the fighter's health.
+  threshold.u64 = health.u32;
+}
+
+void TracePracticeMenuValue(
+    PPCRegister &record, PPCRegister &value)
+{
+  if (!practiceRageOwner.load(std::memory_order_acquire))
+    return;
+
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
+
+  static std::FILE *log =
+      std::fopen("practice-menu-debug.txt", "w");
+  if (!log)
+    return;
+
+  std::fprintf(log, "record=%08X value=%d\n",
+               static_cast<unsigned>(record.u32),
+               static_cast<int>(value.s32));
+  std::fflush(log);
+}
+
+void TracePracticeWallSample(uint32_t held)
+{
+  if (!practiceRageOwner.load(std::memory_order_acquire))
+    return;
+
+  const uint32_t p1 =
+      practiceRageP1.load(std::memory_order_relaxed);
+  const uint32_t p2 =
+      practiceRageP2.load(std::memory_order_relaxed);
+
+  auto *runtime = rex::Runtime::instance();
+  if (!runtime || !p1 || !p2)
+    return;
+
+  const uint8_t *base = runtime->virtual_membase();
+  if (!base)
+    return;
+
+  auto read32 = [&](uint32_t address) -> uint32_t
+  {
+    const uint8_t *p = base + address;
+    return (uint32_t(p[0]) << 24) |
+           (uint32_t(p[1]) << 16) |
+           (uint32_t(p[2]) << 8) |
+           uint32_t(p[3]);
+  };
+
+  auto readFloat = [&](uint32_t address) -> float
+  {
+    const uint32_t bits = read32(address);
+    float value;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+  };
+
+  const char *sample =
+      (held & 0x0004u) ? "left-wall" : (held & 0x0008u) ? "right-wall"
+                                   : (held & 0x0001u)   ? "center"
+                                                        : "other";
+
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
+
+  static std::FILE *log =
+      std::fopen("wall-reset-samples.txt", "w");
+  if (!log)
+    return;
+
+  std::fprintf(
+      log,
+      "%s held=%08X "
+      "p1=%08X x=%.4f z=%.4f height=%.4f "
+      "p2=%08X x=%.4f z=%.4f height=%.4f\n",
+      sample, static_cast<unsigned>(held),
+      static_cast<unsigned>(p1),
+      double(readFloat(p1)),
+      double(readFloat(p1 + 8)),
+      double(readFloat(p1 + 72)),
+      static_cast<unsigned>(p2),
+      double(readFloat(p2)),
+      double(readFloat(p2 + 8)),
+      double(readFloat(p2 + 72)));
+  std::fflush(log);
+}
+
+#include "tekken6_practice_rage_menu.inc"
+#include "tekken6_expanded_rows.inc"
+#include "tekken6_quick_select_trace.inc"
+#include "tekken6_stage_load_trace.inc"
+#include "tekken6_quick_select_apply.inc"
