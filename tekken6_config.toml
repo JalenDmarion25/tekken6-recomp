@@ -300,6 +300,24 @@ name = "QuickSelectAutoConfirmStage"
 registers = ["r29", "r27", "r31", "r28"]
 # END QUICK SELECT DIRECT V5
 
+# BEGIN FIGHTER INPUT LOOKUP TRACE V1
+[[midasm_hook]]
+address = 0x82267F90
+name = "TraceFighterInputLookup"
+registers = ["r3"]
+# END FIGHTER INPUT LOOKUP TRACE V1
+# BEGIN OPPONENT CONTROL EXPERIMENT V1
+[[midasm_hook]]
+address = 0x822A45C4
+name = "OpponentControlSelectInput"
+registers = ["r29", "r30"]
+# END OPPONENT CONTROL EXPERIMENT V1
+# BEGIN NATIVE DUMMY CONTROL TEST V1
+[[midasm_hook]]
+address = 0x823928A8
+name = "NativeDummyControlTest"
+registers = ["r4", "r30"]
+# END NATIVE DUMMY CONTROL TEST V1
 [functions]
 # These vector state helpers are high-call-count, audited leaf routines. Their
 # non-volatile VMX register values are copied into locals and written back at

@@ -71,6 +71,12 @@ constexpr uint32_t fighterCount=sizeof(fighters)/sizeof(fighters[0]);
 constexpr uint32_t stageCount=sizeof(stages)/sizeof(stages[0]);
 constexpr uint32_t playerRow=503, opponentRow=504, stageRow=505, applyRow=506;
 constexpr uint32_t playerFirst=507, opponentFirst=playerFirst+fighterCount;
-constexpr uint32_t stageFirst=opponentFirst+fighterCount, totalCount=stageFirst+stageCount;
+constexpr uint32_t stageFirst=opponentFirst+fighterCount;
+constexpr uint32_t originalTotalCount=stageFirst+stageCount;
+constexpr uint32_t subtreeSize=originalTotalCount-502;
+// RECORD SLOTS MENU TEST V1: 3 menus, each with 4 action records.
+constexpr uint32_t recordSlotBase=originalTotalCount+2*subtreeSize;
+constexpr uint32_t recordSlotStride=5;
+constexpr uint32_t totalCount=recordSlotBase+3*recordSlotStride;
 constexpr uint32_t stringBudget=4096;
 }

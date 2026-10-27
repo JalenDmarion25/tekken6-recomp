@@ -57,9 +57,29 @@ void InstallPracticeRageMenu(PPCRegister& records, PPCRegister& texts) {
       read32(base, records.u32 + 296 * recordSize + 8) != 14 ||
       read32(base, records.u32 + 332 * recordSize + 24) != 335 ||
       read32(base, records.u32 + 335 * recordSize + 20) != 332 ||
+      read32(base, records.u32 + 297 * recordSize + 8) != 2 ||
+      read32(base, records.u32 + 299 * recordSize + 24) != 0 ||
+      read32(base, records.u32 + 350 * recordSize + 8) != 2 ||
+      read32(base, records.u32 + 352 * recordSize + 24) != 0 ||
+      read32(base, records.u32 + 382 * recordSize + 8) != 2 ||
+      read32(base, records.u32 + 384 * recordSize + 24) != 0 ||
       read32(base, records.u32 + 495 * recordSize) != 495) {
     log("layout-mismatch", records.u32, texts.u32);
     return;
+  }
+
+  // Diagnostic: capture the native hierarchy before adding custom records.
+  // The output contains IDs and links only; guest memory is not modified.
+  if (std::FILE* table = std::fopen("quick-select-native-menu-table.txt", "w")) {
+    std::fputs("id parent children first previous next\n", table);
+    for (uint32_t i = 0; i < originalCount; ++i) {
+      const uint32_t r = records.u32 + i * recordSize;
+      std::fprintf(table, "%u %u %u %u %u %u\n", i,
+                   read32(base, r + 4), read32(base, r + 8),
+                   read32(base, r + 16), read32(base, r + 20),
+                   read32(base, r + 24));
+    }
+    std::fclose(table);
   }
 
   const uint32_t size = totalCount * (recordSize + textSize) + quick_select_roster::stringBudget;

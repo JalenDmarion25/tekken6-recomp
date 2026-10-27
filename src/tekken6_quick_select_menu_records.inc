@@ -3,6 +3,7 @@
 #include <cstdint>
 #include "tekken6_quick_select_roster.inc"
 #include <cstring>
+#include <initializer_list>
 
 namespace quick_select_menu_detail {
 constexpr uint32_t quickRow = 502;
@@ -65,4 +66,48 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
          i?stageFirst+i-1:0,i+1<stageCount?stageFirst+i+1:0);
   write(base, records + 297 * recordSize + 8, 3);
   write(base, records + 299 * recordSize + 24, quickRow);
+  // Copy the entire submenu so each native mode has its own parent links,
+  // sibling links and selected values. Text strings are shared read-only.
+  const uint32_t parents[] = {350, 382};
+  const uint32_t tails[] = {352, 384};
+  for (uint32_t mode = 0; mode < 2; ++mode) {
+    const uint32_t delta = (mode + 1) * subtreeSize;
+    for (uint32_t oldId = quickRow; oldId < originalTotalCount; ++oldId) {
+      const uint32_t id = oldId + delta;
+      const uint32_t src = records + oldId * recordSize;
+      const uint32_t dst = records + id * recordSize;
+      std::memcpy(base + dst, base + src, recordSize);
+      std::memcpy(base + texts + id * textSize,
+                  base + texts + oldId * textSize, textSize);
+      write(base, dst, id);
+      write(base, dst + 28, id * 10);
+      for (uint32_t offset : {4u, 16u, 20u, 24u}) {
+        const uint32_t value = read(base, dst + offset);
+        if (value >= quickRow && value < originalTotalCount)
+          write(base, dst + offset, value + delta);
+      }
+    }
+    const uint32_t root = records + (quickRow + delta) * recordSize;
+    write(base, root + 4, parents[mode]);
+    write(base, root + 20, tails[mode]);
+    write(base, root + 24, 0);
+    write(base, records + parents[mode] * recordSize + 8, 3);
+    write(base, records + tails[mode] * recordSize + 24, quickRow + delta);
+  }
+  // RECORD SLOTS MENU TEST V1
+  const char* slotsTest=std::getenv("TEKKEN6_TEST_RECORD_SLOTS");
+  if (slotsTest && std::strcmp(slotsTest,"1")==0) {
+    const uint32_t parent[] = {297,350,382};
+    const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};
+    for (uint32_t mode=0; mode<3; ++mode) {
+      const uint32_t root=recordSlotBase+mode*recordSlotStride;
+      const uint32_t quick=quickRow+mode*subtreeSize;
+      node(root,297,"Record/Playback",parent[mode],4,root+1,quick,0);
+      write(base,records+quick*recordSize+24,root);
+      write(base,records+parent[mode]*recordSize+8,4);
+      for (uint32_t slot=0;slot<4;++slot)
+        node(root+1+slot,346,label[slot],root,0,0,
+             slot?root+slot:0,slot<3?root+2+slot:0);
+    }
+  }
 }

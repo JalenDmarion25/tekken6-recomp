@@ -39,8 +39,80 @@ void Tekken6StartupWait(PPCRegister &spin)
   std::atomic_signal_fence(std::memory_order_seq_cst);
 }
 
+// BEGIN FIGHTER INPUT LOOKUP TRACE V1
+thread_local uint32_t fighterInputLookupIndex = 0xFFFFFFFFu;
+void TraceFighterInputLookup(PPCRegister &index) {
+  fighterInputLookupIndex = index.u32;
+}
+// END FIGHTER INPUT LOOKUP TRACE V1
+// BEGIN FIRST PLAYBACK GLOBALS V1
+// Test state: 0=not loaded, 1=playing, 2=finished, 3=load failed.
+uint32_t firstPlaybackSamples[1800] = {};
+unsigned firstPlaybackCount = 0;
+unsigned firstPlaybackPosition = 0;
+std::atomic<unsigned> firstPlaybackState{0};
+std::atomic<uint32_t> firstPlaybackCurrent{0};
+std::atomic<unsigned> firstPlaybackReads{0};
+thread_local bool firstPlaybackTarget=false;
+// END FIRST PLAYBACK GLOBALS V1
+// BEGIN OPPONENT CONTROL EXPERIMENT V1
+thread_local bool opponentControlSuppressP1 = false;
+// END OPPONENT CONTROL EXPERIMENT V1
 void TraceTekkenButtons(PPCRegister &object, PPCRegister &buttons)
 {
+  // BEGIN OPPONENT CONTROL RETURN V1
+  if (opponentControlSuppressP1 &&
+      (object.u32 == 0x822A45CCu || object.u32 == 0x822A45E0u)) {
+    buttons.u64 = 0;
+  }
+  // END OPPONENT CONTROL RETURN V1
+  // BEGIN FIRST PLAYBACK RETURN V1
+  if (firstPlaybackTarget && firstPlaybackState.load(std::memory_order_acquire)==1 &&
+      (object.u32==0x822A45CCu || object.u32==0x822A45E0u)) {
+    buttons.u64=firstPlaybackCurrent.load(std::memory_order_relaxed);
+    firstPlaybackReads.fetch_add(1,std::memory_order_relaxed);
+  }
+  // END FIRST PLAYBACK RETURN V1
+  // BEGIN FIGHTER INPUT LOG V1
+  if (const char *tracePath = std::getenv("TEKKEN6_FIGHTER_INPUT_TRACE")) {
+    if (*tracePath && object.u32 >= 0x82000000u && object.u32 < 0x83000000u) {
+      static std::mutex traceMutex;
+      std::lock_guard<std::mutex> lock(traceMutex);
+      static std::FILE *file = std::fopen(tracePath, "w");
+      static unsigned count = 0;
+      static std::map<uint64_t, uint32_t> previous;
+      const uint64_t key = (uint64_t(fighterInputLookupIndex) << 32) | object.u32;
+      const auto entry = previous.find(key);
+      const bool changed = entry == previous.end() || entry->second != buttons.u32;
+      if (changed) previous[key] = buttons.u32;
+      if (file && changed && count < 20000) {
+        std::fprintf(file, "%u index=%u caller=%08X input=%08X\n", ++count,
+                     fighterInputLookupIndex, object.u32, buttons.u32);
+        std::fflush(file);
+      }
+    }
+  }
+  // END FIGHTER INPUT LOG V1
+  // BEGIN RECORD POLL TRACE V1
+  // Diagnostic only: capture every update for the two observed input objects.
+  // These addresses are used only to filter logging, never to alter input.
+  if (const char *tracePath = std::getenv("TEKKEN6_RECORD_POLL_TRACE")) {
+    if (*tracePath && (object.u32 == 0x82CDEB3Cu || object.u32 == 0x82CDECCCu)) {
+      static std::mutex traceMutex;
+      std::lock_guard<std::mutex> traceLock(traceMutex);
+      static std::FILE *traceFile = std::fopen(tracePath, "w");
+      static unsigned traceCount = 0;
+      if (traceFile && traceCount < 20000) {
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
+        std::fprintf(traceFile, "%u %lld %08X %08X\n", ++traceCount,
+                     static_cast<long long>(micros), object.u32, buttons.u32);
+        if ((traceCount % 120) == 0) std::fflush(traceFile);
+        if (traceCount == 20000) std::fflush(traceFile);
+      }
+    }
+  }
+  // END RECORD POLL TRACE V1
   static const char *path = std::getenv("TEKKEN6_INPUT_TRACE");
   if (!path || !*path)
     return;
@@ -143,9 +215,184 @@ void LogPracticeSide(
   std::fflush(log);
 }
 
+// BEGIN OPPONENT TOGGLE TEST V1
+std::atomic<bool> opponentToggleTest{false};
+// RECORD SLOTS MENU TEST V1: gameplay updates stop while the practice menu is open.
+uint32_t recordedSlotSamples[3][1800] = {};
+unsigned recordedSlotCounts[3] = {};
+std::atomic<int> selectedRecordSlot{-1};
+std::atomic<bool> recordSlotActive{false};
+std::atomic<bool> recordSlotRecording{false};
+// END OPPONENT TOGGLE TEST V1
 void CapturePracticeHeld(PPCRegister &held)
 {
   practiceHeld.store(held.u32, std::memory_order_relaxed);
+  // BEGIN RECORD FRAME TRACE V1
+  if (const char *path=std::getenv("TEKKEN6_RECORD_FRAME_TRACE")) {
+    if (*path && practiceRageOwner.load(std::memory_order_acquire)) {
+      auto *runtime=rex::Runtime::instance();
+      uint8_t *base=runtime ? runtime->virtual_membase() : nullptr;
+      static std::mutex traceMutex;
+      std::lock_guard<std::mutex> lock(traceMutex);
+      static std::FILE *f=std::fopen(path,"w");
+      static unsigned count=0;
+      if (base && f && count<10000) {
+        auto readbe=[&](uint32_t a) {return (uint32_t(base[a])<<24)|(uint32_t(base[a+1])<<16)|(uint32_t(base[a+2])<<8)|base[a+3];};
+        const auto us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        std::fprintf(f,"%u %lld %08X %08X %08X %08X %08X\n",++count,
+          static_cast<long long>(us),held.u32,readbe(0x82900C00u+0xC4),readbe(0x82901840u+0xC4),readbe(0x82900C00u+0xC8),readbe(0x82901840u+0xC8));
+        if(count%120==0)std::fflush(f);
+      }
+    }
+  }
+  // END RECORD FRAME TRACE V1
+  // BEGIN OPPONENT TOGGLE INPUT V1
+  const char *enabled=std::getenv("TEKKEN6_TEST_OPPONENT_CONTROL");
+  const bool practice=practiceRageOwner.load(std::memory_order_acquire)!=0;
+  static bool wasHeld=false;
+  if (!enabled || std::strcmp(enabled,"1")!=0 || !practice) {
+    wasHeld=false;
+    opponentToggleTest.store(false,std::memory_order_relaxed);
+  } else {
+    const bool heldCombo=(held.u32 & 0x8020u)==0x8020u;
+    if (heldCombo && !wasHeld) {
+      const bool next=!opponentToggleTest.load(std::memory_order_relaxed);
+      opponentToggleTest.store(next,std::memory_order_relaxed);
+      static std::FILE *f=std::fopen("opponent-toggle-test.txt","w");
+      if(f){std::fprintf(f,"toggle=%s held=%08X\n",next?"on":"off",held.u32);std::fflush(f);}
+    }
+    wasHeld=heldCombo;
+  }
+  // END OPPONENT TOGGLE INPUT V1
+  // BEGIN RECORD PLAYBACK CYCLE V1
+  if (const char *cycle=std::getenv("TEKKEN6_TEST_RECORD_CYCLE"); cycle && std::strcmp(cycle,"1")==0) {
+    static bool recording=false, previousCombo=false;
+    static std::chrono::steady_clock::time_point started;
+    const bool valid=enabled && std::strcmp(enabled,"1")==0 && practice;
+    const bool combo=valid && (held.u32 & 0x4020u)==0x4020u;
+    const bool edge=combo && !previousCombo;
+    auto log=[](const char *event, unsigned count) {
+      if (std::FILE *f=std::fopen("record-cycle-test.txt","a")) {
+        std::fprintf(f,"%s samples=%u reads=%u\n",event,count,firstPlaybackReads.load()); std::fclose(f);
+      }
+    };
+    auto finish=[&](const char *reason) {
+      recording=false;
+      recordSlotRecording.store(false,std::memory_order_release);
+      // Retain the native Controller setting until the menu is opened again.
+      opponentToggleTest.store(false,std::memory_order_relaxed);
+      log(reason,firstPlaybackCount);
+    };
+    if (!valid) {
+      // RECORD SLOTS MENU TEST V1: detach when the practice owner goes away.
+      if (recording) finish("practice-ended");
+      if (const char* slotTest=std::getenv("TEKKEN6_TEST_RECORD_SLOTS"); slotTest && std::strcmp(slotTest,"1")==0) {
+        const int previous=selectedRecordSlot.exchange(-1,std::memory_order_acq_rel);
+        if(previous>=0 && previous<3 && firstPlaybackCount<=1800) {
+          recordedSlotCounts[previous]=firstPlaybackCount;
+          std::memcpy(recordedSlotSamples[previous],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));
+        }
+        recordSlotActive.store(false,std::memory_order_release);
+      }
+      firstPlaybackState.store(0,std::memory_order_release);
+      previousCombo=false;
+    } else {
+      if (recording && !opponentToggleTest.load(std::memory_order_relaxed)) finish("control-ended");
+      if (edge && firstPlaybackState.load(std::memory_order_acquire)!=1) {
+        if (recording) finish("record-stop");
+        else if (opponentToggleTest.load(std::memory_order_relaxed)) {
+          firstPlaybackState.store(0,std::memory_order_release);
+          firstPlaybackCount=0; firstPlaybackPosition=0; recording=true;
+          recordSlotRecording.store(true,std::memory_order_release);
+          started=std::chrono::steady_clock::now(); log("record-start",0);
+        } else if (firstPlaybackCount) {
+          firstPlaybackPosition=0; firstPlaybackReads.store(0);
+          firstPlaybackCurrent.store(0); firstPlaybackState.store(1,std::memory_order_release);
+          log("play-start",firstPlaybackCount);
+        } else log("no-recording",0);
+      }
+      previousCombo=combo;
+      // BEGIN SLOT PLAYBACK SHORTCUT V1
+      // Keep Select+X for recording; Select+B switches from rehearsal to playback.
+      static bool previousPlayCombo=false;
+      const char* slotTest=std::getenv("TEKKEN6_TEST_RECORD_SLOTS");
+      const bool playCombo=slotTest && std::strcmp(slotTest,"1")==0 &&
+                           (held.u32 & 0x2020u)==0x2020u;
+      if (playCombo && !previousPlayCombo && !recording &&
+          selectedRecordSlot.load(std::memory_order_acquire)>=0 &&
+          firstPlaybackState.load(std::memory_order_acquire)!=1 && firstPlaybackCount>0) {
+        opponentToggleTest.store(false,std::memory_order_relaxed);
+        firstPlaybackPosition=0;
+        firstPlaybackReads.store(0,std::memory_order_relaxed);
+        firstPlaybackCurrent.store(0,std::memory_order_relaxed);
+        firstPlaybackState.store(1,std::memory_order_release);
+        log("slot-play-start",firstPlaybackCount);
+      }
+      previousPlayCombo=playCombo;
+      // END SLOT PLAYBACK SHORTCUT V1
+      if (recording) {
+        if (std::chrono::steady_clock::now()-started>=std::chrono::seconds(30)) finish("time-limit");
+        else if (firstPlaybackCount>=1800) finish("sample-limit");
+        else firstPlaybackSamples[firstPlaybackCount++]=(held.u32 & 0x20u)?0:held.u32;
+      }
+      if (firstPlaybackState.load(std::memory_order_acquire)==1) {
+        if (opponentToggleTest.load(std::memory_order_relaxed)) {
+          firstPlaybackState.store(0,std::memory_order_release); log("play-cancelled",firstPlaybackPosition);
+        } else if (firstPlaybackPosition<firstPlaybackCount) {
+          firstPlaybackCurrent.store(firstPlaybackSamples[firstPlaybackPosition++],std::memory_order_relaxed);
+        } else {
+          firstPlaybackState.store(2,std::memory_order_release); log("play-complete",firstPlaybackPosition);
+        }
+      }
+    }
+  } else {
+  // BEGIN RECORD CAPTURE TEST V1
+  // One temporary in-memory slot; no playback or persistence in this test.
+  if (enabled && std::strcmp(enabled,"1")==0 && practice) {
+    static uint32_t samples[1800];
+    static unsigned count=0;
+    static bool recording=false, wasRecordCombo=false;
+    static std::chrono::steady_clock::time_point started;
+    const bool combo=(held.u32 & 0x4020u)==0x4020u;
+    const bool activeControl=opponentToggleTest.load(std::memory_order_relaxed);
+    auto save=[&](const char *reason) {
+      if (std::FILE *f=std::fopen("recording-first-test.txt","w")) {
+        const auto ms=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
+        std::fprintf(f,"reason=%s samples=%u elapsed_ms=%lld\n",reason,count,static_cast<long long>(ms));
+        for(unsigned i=0;i<count;++i) std::fprintf(f,"%u %08X\n",i,samples[i]);
+        std::fclose(f);
+      }
+      recording=false;
+    };
+    if(recording && !activeControl) save("control-ended");
+    if(activeControl && combo && !wasRecordCombo) {
+      if(recording) save("manual-stop");
+      else {count=0;started=std::chrono::steady_clock::now();recording=true;}
+    }
+    wasRecordCombo=combo;
+    if(recording) {
+      if(std::chrono::steady_clock::now()-started>=std::chrono::seconds(30)) save("time-limit");
+      else if(count>=1800) save("sample-limit");
+      else samples[count++]=(held.u32 & 0x20u)?0:held.u32;
+    }
+  }
+  // END RECORD CAPTURE TEST V1
+  // BEGIN FIRST PLAYBACK TICK V1
+  if (firstPlaybackState.load(std::memory_order_acquire)==1 &&
+      !opponentToggleTest.load(std::memory_order_relaxed) && practice) {
+    if (firstPlaybackPosition < firstPlaybackCount) {
+      firstPlaybackCurrent.store(firstPlaybackSamples[firstPlaybackPosition++],std::memory_order_relaxed);
+    } else {
+      firstPlaybackState.store(2,std::memory_order_release);
+      if (std::FILE *f=std::fopen("first-playback-test.txt","a")) {
+        std::fprintf(f,"completed updates=%u getter_reads=%u\n",firstPlaybackPosition,firstPlaybackReads.load());std::fclose(f);
+      }
+    }
+  }
+  // END FIRST PLAYBACK TICK V1
+  }
+  // CYCLE ORIGINAL BASE64: ICAvLyBCRUdJTiBSRUNPUkQgQ0FQVFVSRSBURVNUIFYxCiAgLy8gT25lIHRlbXBvcmFyeSBpbi1tZW1vcnkgc2xvdDsgbm8gcGxheWJhY2sgb3IgcGVyc2lzdGVuY2UgaW4gdGhpcyB0ZXN0LgogIGlmIChlbmFibGVkICYmIHN0ZDo6c3RyY21wKGVuYWJsZWQsIjEiKT09MCAmJiBwcmFjdGljZSkgewogICAgc3RhdGljIHVpbnQzMl90IHNhbXBsZXNbMTgwMF07CiAgICBzdGF0aWMgdW5zaWduZWQgY291bnQ9MDsKICAgIHN0YXRpYyBib29sIHJlY29yZGluZz1mYWxzZSwgd2FzUmVjb3JkQ29tYm89ZmFsc2U7CiAgICBzdGF0aWMgc3RkOjpjaHJvbm86OnN0ZWFkeV9jbG9jazo6dGltZV9wb2ludCBzdGFydGVkOwogICAgY29uc3QgYm9vbCBjb21ibz0oaGVsZC51MzIgJiAweDQwMjB1KT09MHg0MDIwdTsKICAgIGNvbnN0IGJvb2wgYWN0aXZlQ29udHJvbD1vcHBvbmVudFRvZ2dsZVRlc3QubG9hZChzdGQ6Om1lbW9yeV9vcmRlcl9yZWxheGVkKTsKICAgIGF1dG8gc2F2ZT1bJl0oY29uc3QgY2hhciAqcmVhc29uKSB7CiAgICAgIGlmIChzdGQ6OkZJTEUgKmY9c3RkOjpmb3BlbigicmVjb3JkaW5nLWZpcnN0LXRlc3QudHh0IiwidyIpKSB7CiAgICAgICAgY29uc3QgYXV0byBtcz1zdGQ6OmNocm9ubzo6ZHVyYXRpb25fY2FzdDxzdGQ6OmNocm9ubzo6bWlsbGlzZWNvbmRzPihzdGQ6OmNocm9ubzo6c3RlYWR5X2Nsb2NrOjpub3coKS1zdGFydGVkKS5jb3VudCgpOwogICAgICAgIHN0ZDo6ZnByaW50ZihmLCJyZWFzb249JXMgc2FtcGxlcz0ldSBlbGFwc2VkX21zPSVsbGRcbiIscmVhc29uLGNvdW50LHN0YXRpY19jYXN0PGxvbmcgbG9uZz4obXMpKTsKICAgICAgICBmb3IodW5zaWduZWQgaT0wO2k8Y291bnQ7KytpKSBzdGQ6OmZwcmludGYoZiwiJXUgJTA4WFxuIixpLHNhbXBsZXNbaV0pOwogICAgICAgIHN0ZDo6ZmNsb3NlKGYpOwogICAgICB9CiAgICAgIHJlY29yZGluZz1mYWxzZTsKICAgIH07CiAgICBpZihyZWNvcmRpbmcgJiYgIWFjdGl2ZUNvbnRyb2wpIHNhdmUoImNvbnRyb2wtZW5kZWQiKTsKICAgIGlmKGFjdGl2ZUNvbnRyb2wgJiYgY29tYm8gJiYgIXdhc1JlY29yZENvbWJvKSB7CiAgICAgIGlmKHJlY29yZGluZykgc2F2ZSgibWFudWFsLXN0b3AiKTsKICAgICAgZWxzZSB7Y291bnQ9MDtzdGFydGVkPXN0ZDo6Y2hyb25vOjpzdGVhZHlfY2xvY2s6Om5vdygpO3JlY29yZGluZz10cnVlO30KICAgIH0KICAgIHdhc1JlY29yZENvbWJvPWNvbWJvOwogICAgaWYocmVjb3JkaW5nKSB7CiAgICAgIGlmKHN0ZDo6Y2hyb25vOjpzdGVhZHlfY2xvY2s6Om5vdygpLXN0YXJ0ZWQ+PXN0ZDo6Y2hyb25vOjpzZWNvbmRzKDMwKSkgc2F2ZSgidGltZS1saW1pdCIpOwogICAgICBlbHNlIGlmKGNvdW50Pj0xODAwKSBzYXZlKCJzYW1wbGUtbGltaXQiKTsKICAgICAgZWxzZSBzYW1wbGVzW2NvdW50KytdPShoZWxkLnUzMiAmIDB4MjB1KT8wOmhlbGQudTMyOwogICAgfQogIH0KICAvLyBFTkQgUkVDT1JEIENBUFRVUkUgVEVTVCBWMQogIC8vIEJFR0lOIEZJUlNUIFBMQVlCQUNLIFRJQ0sgVjEKICBpZiAoZmlyc3RQbGF5YmFja1N0YXRlLmxvYWQoc3RkOjptZW1vcnlfb3JkZXJfYWNxdWlyZSk9PTEgJiYKICAgICAgIW9wcG9uZW50VG9nZ2xlVGVzdC5sb2FkKHN0ZDo6bWVtb3J5X29yZGVyX3JlbGF4ZWQpICYmIHByYWN0aWNlKSB7CiAgICBpZiAoZmlyc3RQbGF5YmFja1Bvc2l0aW9uIDwgZmlyc3RQbGF5YmFja0NvdW50KSB7CiAgICAgIGZpcnN0UGxheWJhY2tDdXJyZW50LnN0b3JlKGZpcnN0UGxheWJhY2tTYW1wbGVzW2ZpcnN0UGxheWJhY2tQb3NpdGlvbisrXSxzdGQ6Om1lbW9yeV9vcmRlcl9yZWxheGVkKTsKICAgIH0gZWxzZSB7CiAgICAgIGZpcnN0UGxheWJhY2tTdGF0ZS5zdG9yZSgyLHN0ZDo6bWVtb3J5X29yZGVyX3JlbGVhc2UpOwogICAgICBpZiAoc3RkOjpGSUxFICpmPXN0ZDo6Zm9wZW4oImZpcnN0LXBsYXliYWNrLXRlc3QudHh0IiwiYSIpKSB7CiAgICAgICAgc3RkOjpmcHJpbnRmKGYsImNvbXBsZXRlZCB1cGRhdGVzPSV1IGdldHRlcl9yZWFkcz0ldVxuIixmaXJzdFBsYXliYWNrUG9zaXRpb24sZmlyc3RQbGF5YmFja1JlYWRzLmxvYWQoKSk7c3RkOjpmY2xvc2UoZik7CiAgICAgIH0KICAgIH0KICB9CiAgLy8gRU5EIEZJUlNUIFBMQVlCQUNLIFRJQ0sgVjEK
+  // END RECORD PLAYBACK CYCLE V1
 }
 
 void TracePracticeWallSample(uint32_t held);
@@ -683,6 +930,68 @@ void TracePracticeWallSample(uint32_t held)
 #include "tekken6_quick_select_trace.inc"
 #include "tekken6_stage_load_trace.inc"
 #include "tekken6_quick_select_apply.inc"
+// BEGIN NATIVE DUMMY CONTROL TEST V1
+void NativeDummyControlTest(PPCRegister &selected, PPCRegister &owner) {
+  using namespace quick_select_apply_detail;
+  const char *enabled=std::getenv("TEKKEN6_TEST_OPPONENT_CONTROL");
+  if (!enabled || std::strcmp(enabled,"1") != 0) return;
+  std::lock_guard<std::mutex> lock(mutex);
+  uint8_t *b=memory(); if(!b) return;
+  const uint32_t c=context(b);
+  if (!c || owner.u32!=c || read(b,c)!=0x8207D3E4u || active()) return;
+  // BEGIN FIRST PLAYBACK NATIVE V1
+  const char *play=std::getenv("TEKKEN6_TEST_FIRST_PLAYBACK");
+  if (enabled && std::strcmp(enabled,"1")==0 && play && std::strcmp(play,"1")==0 &&
+      !opponentToggleTest.load(std::memory_order_relaxed) && firstPlaybackState.load()==0) {
+    std::FILE *src=std::fopen("recording-first-test.txt","r");
+    unsigned n=0; long long elapsed=0; char reason[80]={}; bool ok=false;
+    if(src) {
+      if(std::fscanf(src,"reason=%79s samples=%u elapsed_ms=%lld",reason,&n,&elapsed)==3 && n>0 && n<=1800) {
+        ok=true; for(unsigned i=0;i<n;++i) {unsigned index=0,value=0; if(std::fscanf(src,"%u %x",&index,&value)!=2 || index!=i){ok=false;break;} firstPlaybackSamples[i]=value;}
+      }
+      std::fclose(src);
+    }
+    if (std::FILE *f=std::fopen("first-playback-test.txt","w")) {std::fprintf(f,"load=%s samples=%u\n",ok?"ok":"failed",ok?n:0);std::fclose(f);}
+    if(ok){firstPlaybackCount=n;firstPlaybackPosition=0;firstPlaybackCurrent.store(0);firstPlaybackState.store(1,std::memory_order_release);}
+    else firstPlaybackState.store(3,std::memory_order_release);
+  }
+  // END FIRST PLAYBACK NATIVE V1
+  if (!opponentToggleTest.load(std::memory_order_relaxed) && firstPlaybackState.load(std::memory_order_acquire)!=1 && !recordSlotActive.load(std::memory_order_acquire)) return;
+  static std::FILE *f=std::fopen("native-control-apply.txt","w");
+  static unsigned count=0;
+  if(f && count++<50) {std::fprintf(f,"owner=%08X native=%u override=7\n",owner.u32,selected.u32);std::fflush(f);}
+  selected.u64=7;
+}
+// END NATIVE DUMMY CONTROL TEST V1
+
+// BEGIN OPPONENT CONTROL IMPLEMENTATION V1
+// Deliberately limited to the observed fighter objects and practice context.
+void OpponentControlSelectInput(PPCRegister &index, PPCRegister &fighter) {
+  using namespace quick_select_apply_detail;
+  opponentControlSuppressP1 = false;
+  // BEGIN FIRST PLAYBACK SELECT V1
+  firstPlaybackTarget=false;
+  // END FIRST PLAYBACK SELECT V1
+  const char *enabled = std::getenv("TEKKEN6_TEST_OPPONENT_CONTROL");
+  if (!enabled || std::strcmp(enabled, "1") != 0 || (!opponentToggleTest.load(std::memory_order_relaxed) && firstPlaybackState.load(std::memory_order_acquire)!=1)) return;
+  std::lock_guard<std::mutex> lock(mutex);
+  uint8_t *b = memory();
+  if (!b) return;
+  const uint32_t c = context(b);
+  if (!c || read(b,c) != 0x8207D3E4u || active()) return;
+  static std::FILE *f = std::fopen("opponent-control-test.txt", "w");
+  static unsigned logged = 0;
+  if (logged < 50 && (fighter.u32 == 0x82900C00u || fighter.u32 == 0x82901840u)) {
+    if (f) { std::fprintf(f,"fighter=%08X index=%u\n",fighter.u32,index.u32); std::fflush(f); }
+    ++logged;
+  }
+  if (fighter.u32 == 0x82900C00u && index.u32 == 8 && opponentToggleTest.load(std::memory_order_relaxed)) opponentControlSuppressP1 = true;
+  else if (fighter.u32 == 0x82901840u && index.u32 == 9) {
+    index.u64 = 8;
+    if (!opponentToggleTest.load(std::memory_order_relaxed) && firstPlaybackState.load(std::memory_order_acquire)==1) firstPlaybackTarget=true;
+  }
+}
+// END OPPONENT CONTROL IMPLEMENTATION V1
 
 uint32_t GetPracticeWallStageId()
 {
