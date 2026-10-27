@@ -1,0 +1,12 @@
+    # BEGIN QUICK SELECT UI GUARD V5
+    if name == '822FA058':
+        instructions = '\n'.join(re.findall(r'^\t// ([^\n]*)', text, re.M))
+        if hashlib.sha256(instructions.encode()).hexdigest() != 'a052a2222126a2838073d9adde99e12227601aa53390d33d07cb2460f76ae6ec':
+            raise ValueError('Unsupported selection UI renderer; refusing render guard')
+        needle = '\tREX_FUNC_PROLOGUE();\n'
+        if text.count(needle) != 1:
+            raise ValueError('Unexpected selection UI renderer prologue')
+        guard = ('\textern bool QuickSelectHideSelectionUI(uint8_t*, uint32_t);\n'
+                 '\tif (QuickSelectHideSelectionUI(base, ctx.r3.u32)) return;\n')
+        return text.replace(needle, needle + guard, 1), 1
+    # END QUICK SELECT UI GUARD V5

@@ -10,7 +10,7 @@ namespace practice_rage_menu_detail {
 constexpr uint32_t originalCount = 496;
 constexpr uint32_t recordSize = 96;
 constexpr uint32_t textSize = 40;
-constexpr uint32_t totalCount = 520;
+constexpr uint32_t totalCount = quick_select_roster::totalCount;
 constexpr uint32_t p1Row = 496;
 constexpr uint32_t p2Row = 499;
 std::atomic<uint32_t> menuRecords{0};
@@ -62,7 +62,7 @@ void InstallPracticeRageMenu(PPCRegister& records, PPCRegister& texts) {
     return;
   }
 
-  const uint32_t size = totalCount * (recordSize + textSize) + 768;
+  const uint32_t size = totalCount * (recordSize + textSize) + quick_select_roster::stringBudget;
   const uint32_t allocation = runtime->memory()->SystemHeapAlloc(size, 32);
   if (!allocation) { log("allocation-failed"); return; }
   const uint32_t newRecords = allocation;

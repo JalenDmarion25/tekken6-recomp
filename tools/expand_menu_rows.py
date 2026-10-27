@@ -15,6 +15,18 @@ BANK = {2996:0,18676:1,-31168:2}
 EXPECTED = {'822FEDA8': '34d3a19990a9529d69470e534af440f0616dee08ee19666af7e950144aa76e71', '8239E4F8': 'b4393d1c0b485ec8ea2ca0653e0a0952f404a2b6bce93750947d47c78f8197a0', '824306D8': 'e53c6b2e8b1baf175c3e4194b0e7b4e97bc271fe826c58d22b222bf111432831', '82430788': '3599d67d7e9d544fd6c58ae72fc0c8104bbbe04a7f4a354c4743236b887a1546', '82430830': 'bed740969b1638f68ad7e4151f6a7551812f188e71666e5cee3e5994c63375ad', '82430870': 'd7030ecee6347274303ef06e66f63aeb3d0921dc380d055aed24caf237d95a72', '82430A38': '41a3c38f79e668720897efff969b71934ff4b5c54fa05698590712e6d4b27d68', '82430B88': 'c0178438fa076e1d0e9d77c711f36380a6391793e3a372842605799459d4ce26', '82430BF8': '62ea1db095fd40928132264f9a7a80123aff2a48015ad2c4f019836d9e37ab85', '82430C50': 'bf25cb96a352acc81036665685cb8791f6881eee6a5db2e8797d523c28ea9510', '82432398': '8e0b857a1390024c5e3eee9d1d3ad3156846b752d42c69b8f8f0bdab958d3aef', '82432CD8': 'e0146f8ff7fe14fa8acc474ea16da6da1b97fc32c1334b8a3c4afd3ed165c6d0', '82433128': '81a73bcd59d3b4093ca7b1e415433a5dd1b85209bc1dce735304d9de112e0205', '82433560': '85df31ef374c0652430dd7ff9e8682c60208bcc7612da7a905572b8ba0c51a67', '82436D58': '5d4bcc70d280515871e1fe3885b024187c9bc00928f0aefac4cf6d7bfe5948fd', '82436E28': 'c04c25b8c0ce0bf0dfa4a6de70cc4c5f2b968329ff0a5296ef906aff5ee75d67'}
 
 def patch_function(name, text):
+    # BEGIN QUICK SELECT UI GUARD V5
+    if name == '822FA058':
+        instructions = '\n'.join(re.findall(r'^\t// ([^\n]*)', text, re.M))
+        if hashlib.sha256(instructions.encode()).hexdigest() != 'a052a2222126a2838073d9adde99e12227601aa53390d33d07cb2460f76ae6ec':
+            raise ValueError('Unsupported selection UI renderer; refusing render guard')
+        needle = '\tREX_FUNC_PROLOGUE();\n'
+        if text.count(needle) != 1:
+            raise ValueError('Unexpected selection UI renderer prologue')
+        guard = ('\textern bool QuickSelectHideSelectionUI(uint8_t*, uint32_t);\n'
+                 '\tif (QuickSelectHideSelectionUI(base, ctx.r3.u32)) return;\n')
+        return text.replace(needle, needle + guard, 1), 1
+    # END QUICK SELECT UI GUARD V5
     changes = 0
     if name in EXPECTED:
         instructions = '\n'.join(re.findall(r'^\t// ([^\n]*)', text, re.M))
@@ -29,6 +41,9 @@ def patch_function(name, text):
         if n != 1: raise ValueError('Unexpected menu destructor prologue')
         return text, 1
     if name not in TARGETS: return text, 0
+    prologue = '\tREX_FUNC_PROLOGUE();\n'
+    if text.count(prologue) != 1: raise ValueError('Unexpected owner capture in sub_' + name)
+    text = text.replace(prologue, prologue + '\t[[maybe_unused]] const uint32_t t6RowsOwner = ctx.r3.u32; // OWNER-SCOPED MENU ROWS FIX\n', 1)
     blocks = re.split(r'(?=^\t// )', text, flags=re.M)
     result = []
     for block in blocks:
@@ -40,7 +55,7 @@ def patch_function(name, text):
         if add:
             dest,src,n = add.groups(); n=int(n)
             if n in BANK:
-                statement = f'\tctx.{dest}.u64 = T6RowsMap(ctx.{dest}.u32, {BANK[n]}); // expanded row address\n'
+                statement = f'\tctx.{dest}.u64 = T6RowsMap(ctx.{dest}.u32, {BANK[n]}, t6RowsOwner); // expanded row address\n'
                 # Insert after the instruction's original assignment, before labels.
                 p = re.compile(r'(\tctx\.'+dest+r'\.s64 = [^;]+;\n)')
                 block,count = p.subn(lambda x:x[1]+statement,block,count=1)
@@ -48,9 +63,9 @@ def patch_function(name, text):
                 changes += 1
             elif n in (1120,320,15680,-15680):
                 if n in (1120,320):
-                    rhs=f'T6RowsAdvance(ctx.{src}.u32, {n})'
+                    rhs=f'T6RowsAdvance(ctx.{src}.u32, {n}, t6RowsOwner)'
                 else:
-                    rhs=f'T6RowsRelated(ctx.{src}.u32, {0 if n < 0 else 1})'
+                    rhs=f'T6RowsRelated(ctx.{src}.u32, {0 if n < 0 else 1}, t6RowsOwner)'
                 p = re.compile(r'\tctx\.'+dest+r'\.s64 = [^;]+;')
                 block,count=p.subn(f'\tctx.{dest}.u64 = {rhs};',block,count=1)
                 if count != 1: raise ValueError(name+': unexpected row increment '+instruction)
@@ -59,8 +74,8 @@ def patch_function(name, text):
         if load:
             dest,off,src=load.groups();off=int(off)
             if off in (2996,18676,15680,-15680):
-                rhs=(f'T6RowsMap(ctx.{src}.u32 + {off}, {BANK[off]})'
-                     if off in BANK else f'T6RowsRelated(ctx.{src}.u32, {0 if off<0 else 1})')
+                rhs=(f'T6RowsMap(ctx.{src}.u32 + {off}, {BANK[off]}, t6RowsOwner)'
+                     if off in BANK else f'T6RowsRelated(ctx.{src}.u32, {0 if off<0 else 1}, t6RowsOwner)')
                 p=re.compile(r'REX_LOAD_U32\(ctx\.'+src+r'\.u32 \+ '+str(off)+r'\)')
                 block,count=p.subn(f'REX_LOAD_U32({rhs})',block,count=1)
                 if count!=1:raise ValueError(name+': unexpected row load '+instruction)
@@ -68,7 +83,7 @@ def patch_function(name, text):
         # Indicator byte 113 is read through an indexed offset of 34368+113.
         if name=='82430C50' and instruction=='lbzx r6,r11,r7':
             block,count=re.subn(r'REX_LOAD_U8\(ctx\.r11\.u32 \+ ctx\.r7\.u32\)',
-                               'REX_LOAD_U8(T6RowsMap(ctx.r11.u32 + ctx.r7.u32, 2))',block,count=1)
+                               'REX_LOAD_U8(T6RowsMap(ctx.r11.u32 + ctx.r7.u32, 2, t6RowsOwner))',block,count=1)
             if count!=1:raise ValueError('Unexpected indexed indicator flag load')
             changes+=1
         if name in OWNERS:

@@ -1,3 +1,4 @@
+// OWNER-SCOPED MENU ROWS FIX
 // Include ONCE at the end of tekken6_guest_hooks.cpp, after the Rage menu include.
 #pragma once
 #include "tekken6_expanded_rows.h"
@@ -33,9 +34,10 @@ uint32_t row(uint32_t owner, const Storage& s, uint32_t bank, uint32_t index) {
   return index < 14 ? owner + offsets[bank] + index * strides[bank]
                     : s.allocation + extraOffsets[bank] + (index - 14) * strides[bank];
 }
-bool locate(uint32_t address, uint32_t& owner, Storage& storage,
+bool locate(uint32_t address, uint32_t expectedOwner, uint32_t& owner, Storage& storage,
             uint32_t& bank, uint32_t& index) {
   for (const auto& entry : windows) {
+    if (entry.first != expectedOwner) continue;
     for (uint32_t k = 0; k < 3; ++k) {
       const uint32_t start = entry.first + offsets[k];
       const uint32_t delta = address - start;
@@ -56,30 +58,31 @@ uint32_t T6RowsCapacity(uint32_t owner) {
   std::lock_guard<std::mutex> lock(t6_expanded_rows::mutex);
   return t6_expanded_rows::windows.count(owner) ? 16u : 14u;
 }
-uint32_t T6RowsMap(uint32_t address, uint32_t bank) {
+uint32_t T6RowsMap(uint32_t address, uint32_t bank, uint32_t expectedOwner) {
   using namespace t6_expanded_rows;
   if (bank > 2) return address;
   std::lock_guard<std::mutex> lock(mutex);
   for (const auto& entry : windows) {
+    if (entry.first != expectedOwner) continue;
     const uint32_t delta = address - entry.first - offsets[bank];
     if (delta < 16 * strides[bank])
       return row(entry.first, entry.second, bank, delta / strides[bank]) + delta % strides[bank];
   }
   return address;
 }
-uint32_t T6RowsAdvance(uint32_t address, int32_t step) {
+uint32_t T6RowsAdvance(uint32_t address, int32_t step, uint32_t expectedOwner) {
   using namespace t6_expanded_rows;
   std::lock_guard<std::mutex> lock(mutex);
   uint32_t owner{}, bank{}, index{}; Storage s{};
-  if (locate(address, owner, s, bank, index) && step == int32_t(strides[bank]) && index < 15)
+  if (locate(address, expectedOwner, owner, s, bank, index) && step == int32_t(strides[bank]) && index < 15)
     return row(owner, s, bank, index + 1);
   return address + uint32_t(step);
 }
-uint32_t T6RowsRelated(uint32_t address, uint32_t targetBank) {
+uint32_t T6RowsRelated(uint32_t address, uint32_t targetBank, uint32_t expectedOwner) {
   using namespace t6_expanded_rows;
   std::lock_guard<std::mutex> lock(mutex);
   uint32_t owner{}, bank{}, index{}; Storage s{};
-  if (targetBank < 3 && locate(address, owner, s, bank, index))
+  if (targetBank < 3 && locate(address, expectedOwner, owner, s, bank, index))
     return row(owner, s, targetBank, index);
   // This helper is emitted only for +/-15680 transitions between label banks.
   return targetBank == 0 ? address - 15680u : address + 15680u;

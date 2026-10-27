@@ -1,14 +1,11 @@
 // Native Quick Select records for the experimental Apply build.
 #pragma once
 #include <cstdint>
+#include "tekken6_quick_select_roster.inc"
 #include <cstring>
 
 namespace quick_select_menu_detail {
 constexpr uint32_t quickRow = 502;
-constexpr uint32_t playerRow = 503;
-constexpr uint32_t opponentRow = 508;
-constexpr uint32_t stageRow = 513;
-constexpr uint32_t totalCount = 520;
 constexpr uint32_t recordSize = 96;
 constexpr uint32_t textSize = 40;
 uint32_t read(const uint8_t* base, uint32_t a) {
@@ -51,26 +48,21 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
     for (uint32_t field = 1; field <= 4; ++field)
       write(base, entry + field * 4, minusOne);
   };
-  // Clone Mode Select's submenu role, with a separate parent and child list.
+  using namespace quick_select_roster;
   node(quickRow, 297, "Quick Select", 297, 4, playerRow, 299, 0);
-  node(playerRow, 323, "Player", quickRow, 5, 504, 0, opponentRow);
-  node(opponentRow, 323, "Opponent", quickRow, 5, 509, playerRow, stageRow);
-  node(stageRow, 323, "Stage", quickRow, 3, 514, opponentRow, 516);
-  node(516, 346, "Apply", quickRow, 0, 0, stageRow, 0);
-  const char* characters[] = {"Hwoarang", "Lars Alexanderson", "Jin Kazama", "Kazuya Mishima"};
-  for (uint32_t i = 0; i < 4; ++i) {
-    node(504 + i, 324, characters[i], playerRow, 0, 0,
-         i ? 503 + i : 0, i < 3 ? 505 + i : 517);
-    node(509 + i, 324, characters[i], opponentRow, 0, 0,
-         i ? 508 + i : 0, i < 3 ? 510 + i : 518);
+  node(playerRow, 323, "Player", quickRow, fighterCount, playerFirst, 0, opponentRow);
+  node(opponentRow, 323, "Opponent", quickRow, fighterCount, opponentFirst, playerRow, stageRow);
+  node(stageRow, 323, "Stage", quickRow, stageCount, stageFirst, opponentRow, applyRow);
+  node(applyRow, 346, "Apply", quickRow, 0, 0, stageRow, 0);
+  for(uint32_t i=0;i<fighterCount;++i) {
+    node(playerFirst+i,324,fighters[i].name,playerRow,0,0,
+         i?playerFirst+i-1:0,i+1<fighterCount?playerFirst+i+1:0);
+    node(opponentFirst+i,324,fighters[i].name,opponentRow,0,0,
+         i?opponentFirst+i-1:0,i+1<fighterCount?opponentFirst+i+1:0);
   }
-  node(514, 324, "Noh Theater", stageRow, 0, 0, 0, 515);
-  node(515, 324, "Fallen Colony", stageRow, 0, 0, 514, 519);
-  node(517, 324, "Current fighter", playerRow, 0, 0, 507, 0);
-  node(518, 324, "Current fighter", opponentRow, 0, 0, 512, 0);
-  node(519, 324, "Current stage", stageRow, 0, 0, 515, 0);
-  // Layout defaults only. No claim that these are the active match selections.
-  write(base, records + opponentRow * recordSize + 80, 2);
+  for(uint32_t i=0;i<stageCount;++i)
+    node(stageFirst+i,324,stages[i].name,stageRow,0,0,
+         i?stageFirst+i-1:0,i+1<stageCount?stageFirst+i+1:0);
   write(base, records + 297 * recordSize + 8, 3);
   write(base, records + 299 * recordSize + 24, quickRow);
 }

@@ -293,6 +293,13 @@ name = "QuickSelectAutoConfirmCharacter"
 registers = ["r3", "r4", "r5", "r7"]
 # END QUICK SELECT AUTO CHARACTER V4
 
+# BEGIN QUICK SELECT DIRECT V5
+[[midasm_hook]]
+address = 0x822F17CC
+name = "QuickSelectAutoConfirmStage"
+registers = ["r29", "r27", "r31", "r28"]
+# END QUICK SELECT DIRECT V5
+
 [functions]
 # These vector state helpers are high-call-count, audited leaf routines. Their
 # non-volatile VMX register values are copied into locals and written back at

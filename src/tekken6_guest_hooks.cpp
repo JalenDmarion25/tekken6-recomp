@@ -149,6 +149,7 @@ void CapturePracticeHeld(PPCRegister &held)
 }
 
 void TracePracticeWallSample(uint32_t held);
+void TracePracticeStage();
 
 void CapturePracticeResetPress(PPCRegister &pressed)
 {
@@ -164,6 +165,9 @@ void CapturePracticeResetPress(PPCRegister &pressed)
 
   if (!(held & resetModifier) || !(pressed.u32 & resetButton))
     return;
+
+  TracePracticeWallSample(held);
+  TracePracticeStage();
 
   PracticeResetPosition position =
       preferredResetPosition.load(std::memory_order_relaxed);
@@ -232,6 +236,8 @@ void ApplyPracticeResetSide(
   rightSideCameraRequested = redirectPracticePlacement;
 }
 
+uint32_t GetPracticeWallStageId();
+
 void ApplyNohWallResetPositions(PPCRegister &firstPosition)
 {
   const PracticeResetPosition position = activeResetPosition;
@@ -241,9 +247,136 @@ void ApplyNohWallResetPositions(PPCRegister &firstPosition)
       position != PracticeResetPosition::RightWall)
     return;
 
-  // Explicit opt-in for the Noh Theater prototype.
-  const char *enabled = std::getenv("TEKKEN6_NOH_WALL_RESET");
-  if (!enabled || std::strcmp(enabled, "1") != 0)
+  struct FighterPosition
+  {
+    float x;
+    float z;
+  };
+
+  struct StageWallPositions
+  {
+    uint32_t stageId;
+    FighterPosition leftFirst;
+    FighterPosition leftSecond;
+    FighterPosition rightFirst;
+    FighterPosition rightSecond;
+  };
+
+  static constexpr StageWallPositions stages[] = {
+      {
+          8, // Noh Theater
+          {-8498.0107f, -77.1956f},
+          {-6527.3008f, -65.8241f},
+          {6496.6333f, 30.8987f},
+          {8505.2480f, 34.8247f},
+      },
+      {
+          0, // Mystical Forest
+          {-8077.3867f, 38.1099f},
+          {-6096.9229f, -8.9912f},
+          {6440.4243f, 116.9052f},
+          {8473.7686f, 153.5904f},
+      },
+      {
+          19, // Anger of the Earth
+          {-1.1955f, 10428.2471f},
+          {-17.4032f, 8399.5801f},
+          {31.7192f, -8325.2930f},
+          {104.6564f, -10504.0420f},
+      },
+      {
+          3, // Cemetery
+          {5088.2358f, -12064.5273f},
+          {4137.2256f, -10324.9238f},
+          {1791.5426f, 8474.5166f},
+          {2039.5913f, 10519.2480f},
+      },
+      {
+          4, // City After Dark
+          {-664.1158f, -8128.4556f},
+          {-825.4996f, -6212.9878f},
+          {-380.1262f, 6292.2383f},
+          {-328.3642f, 8210.9873f},
+      },
+      {
+          18, // Electric Fountain
+          {10571.1006f, 58.1530f},
+          {8672.0947f, 22.4465f},
+          {-8563.9062f, -27.4163f},
+          {-10601.4707f, -232.7596f},
+      },
+      {
+          9, // Fallen Colony
+          {-2418.2595f, -8225.2461f},
+          {-2278.1521f, -6092.1392f},
+          {-1702.2510f, 6594.6030f},
+          {-1622.6917f, 8510.4668f},
+      },
+      {
+          5, // Fiesta del Tomate
+          {-816.4620f, 7057.3799f},
+          {-550.8083f, 5277.1592f},
+          {1278.0625f, -5344.4478f},
+          {1320.5850f, -7281.0742f},
+      },
+      {
+          11, // Gargoyle's Perch
+          {2147.0815f, -8089.7998f},
+          {1329.4110f, -6566.1538f},
+          {3870.8943f, -5527.8096f},
+          {4638.7402f, -7261.1738f},
+      },
+      {
+          16, // Lightning Storm
+          {-10901.1035f, 1130.6072f},
+          {-9034.8545f, 1297.7461f},
+          {9256.1182f, 1106.8669f},
+          {11241.1230f, 1323.3992f},
+      },
+      {
+          6, // Rustic Asia
+          {-7061.9209f, -247.0420f},
+          {-5009.4282f, -163.5623f},
+          {5154.7217f, -270.0551f},
+          {6961.7129f, -106.3547f},
+      },
+      {
+          2, // Temple Grounds
+          {7679.5059f, 3773.7380f},
+          {5751.4292f, 3743.8127f},
+          {-5735.3770f, 3718.1309f},
+          {-7787.9219f, 3677.0520f},
+      },
+      {
+          17, // Tunnel Disaster
+          {614.2346f, 9065.5762f},
+          {677.8888f, 7139.7119f},
+          {-1706.4899f, -7248.9634f},
+          {-1945.2227f, -9018.3916f},
+      },
+      {
+          10, // Urban War Zone
+          {-8958.4941f, 650.6441f},
+          {-7220.7788f, 920.0184f},
+          {6831.8848f, -286.1549f},
+          {8938.0615f, -239.7160f},
+      },
+  };
+
+  const uint32_t stageId = GetPracticeWallStageId();
+
+  const StageWallPositions *selected = nullptr;
+  for (const auto &stage : stages)
+  {
+    if (stage.stageId == stageId)
+    {
+      selected = &stage;
+      break;
+    }
+  }
+
+  // Keep the game's calculated placement for unconfigured stages.
+  if (!selected)
     return;
 
   auto *runtime = rex::Runtime::instance();
@@ -266,25 +399,23 @@ void ApplyNohWallResetPositions(PPCRegister &firstPosition)
     p[3] = uint8_t(bits);
   };
 
-  // The reset routine uses adjacent 16-byte position buffers:
-  // first at stack +96, second at stack +112.
   const uint32_t first = firstPosition.u32;
   const uint32_t second = first + 16;
 
-  if (position == PracticeResetPosition::LeftWall)
-  {
-    writeFloat(first, -8498.0107f);
-    writeFloat(first + 8, -77.1956f);
-    writeFloat(second, -6527.3008f);
-    writeFloat(second + 8, -65.8241f);
-  }
-  else
-  {
-    writeFloat(first, 6496.6333f);
-    writeFloat(first + 8, 30.8987f);
-    writeFloat(second, 8505.2480f);
-    writeFloat(second + 8, 34.8247f);
-  }
+  const FighterPosition &firstTarget =
+      position == PracticeResetPosition::LeftWall
+          ? selected->leftFirst
+          : selected->rightFirst;
+
+  const FighterPosition &secondTarget =
+      position == PracticeResetPosition::LeftWall
+          ? selected->leftSecond
+          : selected->rightSecond;
+
+  writeFloat(first, firstTarget.x);
+  writeFloat(first + 8, firstTarget.z);
+  writeFloat(second, secondTarget.x);
+  writeFloat(second + 8, secondTarget.z);
 }
 
 void RedirectPracticeFirstPlacement(
@@ -552,3 +683,25 @@ void TracePracticeWallSample(uint32_t held)
 #include "tekken6_quick_select_trace.inc"
 #include "tekken6_stage_load_trace.inc"
 #include "tekken6_quick_select_apply.inc"
+
+uint32_t GetPracticeWallStageId()
+{
+  using namespace quick_select_apply_detail;
+
+  std::lock_guard<std::mutex> lock(mutex);
+
+  uint8_t *base = memory();
+  if (!base)
+    return 0xFFFFFFFFu;
+
+  const uint32_t practiceContext = context(base);
+  const uint32_t owner =
+      practiceRageOwner.load(std::memory_order_acquire);
+
+  if (!practiceContext ||
+      practiceContext != owner ||
+      read(base, practiceContext) != 0x8207D3E4u)
+    return 0xFFFFFFFFu;
+
+  return read(base, practiceContext + 352);
+}
