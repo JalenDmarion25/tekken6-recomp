@@ -97,17 +97,70 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
   // RECORD SLOTS MENU TEST V1
   const char* slotsTest=std::getenv("TEKKEN6_TEST_RECORD_SLOTS");
   if (slotsTest && std::strcmp(slotsTest,"1")==0) {
+    // COMMAND MENU PROBE V1: preserve the normal slot layout unless opted in.
+    // LOOP PLAYBACK TEST V1: do not add the command-list entry.
+    const bool commandEnabled=false; // RECORD MODE SWITCH TEST V1
+    // WEIGHTED PLAYBACK TEST V1
+    const char* weightedTest=std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK");
+    const bool weightedEnabled=weightedTest && std::strcmp(weightedTest,"1")==0;
     const uint32_t parent[] = {297,350,382};
-    const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};
+    // RECORD MODE SWITCH TEST V1: retain the existing menu without the opt-in flag.
+    const char* modeFlag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
+    const bool modeEnabled=modeFlag && std::strcmp(modeFlag,"1")==0;
+    const char* label[]={"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};
     for (uint32_t mode=0; mode<3; ++mode) {
       const uint32_t root=recordSlotBase+mode*recordSlotStride;
       const uint32_t quick=quickRow+mode*subtreeSize;
-      node(root,297,"Record/Playback",parent[mode],4,root+1,quick,0);
+      node(root,297,"Record/Playback",parent[mode],4+(weightedEnabled?3:0),modeEnabled?root+4:root+1,quick,0);
       write(base,records+quick*recordSize+24,root);
       write(base,records+parent[mode]*recordSize+8,4);
-      for (uint32_t slot=0;slot<4;++slot)
-        node(root+1+slot,346,label[slot],root,0,0,
-             slot?root+slot:0,slot<3?root+2+slot:0);
+      // RECORD MODE SWITCH TEST V1: mode choices precede the slot actions.
+      if(modeEnabled) {
+        const uint32_t choices=recordModeChoiceBase+mode*3;
+        const char* modeLabels[]={"Free Style", "VS CPU Training", "Defensive Training"};
+        // RECORD MODE FIX V1: fourth choice opens an independently linked Quick Select.
+        node(root+4,297,"Mode Select",root,4,choices,0,root+1);
+        for(uint32_t option=0;option<3;++option)
+          node(choices+option,346,modeLabels[option],root+4,0,0,
+               option?choices+option-1:0,option<2?choices+option+1:recordQuickBase+mode*subtreeSize);
+        const uint32_t srcRoot=quickRow+mode*subtreeSize;
+        const uint32_t dstRoot=recordQuickBase+mode*subtreeSize;
+        for(uint32_t i=0;i<subtreeSize;++i) {
+          const uint32_t src=records+(srcRoot+i)*recordSize, dst=records+(dstRoot+i)*recordSize;
+          std::memcpy(base+dst,base+src,recordSize);
+          std::memcpy(base+texts+(dstRoot+i)*textSize,base+texts+(srcRoot+i)*textSize,textSize);
+          write(base,dst,dstRoot+i);write(base,dst+28,(dstRoot+i)*10);
+          for(uint32_t offset:{4u,16u,20u,24u}) {
+            const uint32_t value=read(base,dst+offset);
+            if(value>=srcRoot && value<srcRoot+subtreeSize) write(base,dst+offset,dstRoot+(value-srcRoot));
+          }
+        }
+        write(base,records+dstRoot*recordSize+4,root+4);
+        write(base,records+dstRoot*recordSize+20,choices+2);
+        write(base,records+dstRoot*recordSize+24,0);
+        for (uint32_t slot=0;slot<3;++slot)
+          node(root+1+slot,346,label[slot],root,0,0,
+               slot?root+slot:root+4,slot<2?root+2+slot:0);
+      } else {
+        for(uint32_t slot=0;slot<4;++slot)
+          node(root+1+slot,346,label[slot],root,0,0,
+               slot?root+slot:0,slot<3?root+2+slot:0);
+      }
+      if(weightedEnabled) {
+        const uint32_t first=recordWeightBase+mode*weightModeSize;
+        const uint32_t tail=root+(modeEnabled?3:4);
+        const char* weightLabels[]={"Slot 1 weight", "Slot 2 weight", "Slot 3 weight"};
+        const char* values[]={"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"};
+        write(base,records+tail*recordSize+24,first);
+        for(uint32_t slot=0;slot<3;++slot) {
+          const uint32_t row=first+slot*weightGroupSize;
+          node(row,323,weightLabels[slot],root,weightOptionCount,row+1,
+               slot?row-weightGroupSize:tail,slot<2?row+weightGroupSize:0);
+          write(base,records+row*recordSize+80,1); // Equal default weights.
+          for(uint32_t v=0;v<weightOptionCount;++v)
+            node(row+1+v,324,values[v],row,0,0,v?row+v:0,v+1<weightOptionCount?row+v+2:0);
+        }
+      }
     }
   }
 }

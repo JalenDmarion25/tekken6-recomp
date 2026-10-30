@@ -79,10 +79,56 @@ void QuickSelectMenuOpening(PPCRegister& object) {
  const uint32_t c=context(b);
  if(c&&read(b,c)==0x8207D3E4u&&object.u32==c+116){completeOnMenu(b,c);needsSync=true;}
 }
+// RECORD ENTRY PLAYBACK V2: submenu observation arms the mode; only mode actions release it.
+// Called under quick_select_apply_detail::mutex by the native menu update hook.
+void ObserveRecordPlaybackMenu(uint8_t* b, uint32_t c, uint32_t object, uint32_t records) {
+ using namespace quick_select_apply_detail;
+ const char* flag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
+ if(!flag || std::strcmp(flag,"1")!=0 || !c || !records ||
+    read(b,c)!=0x8207D3E4u || object!=c+116 || active() || read(b,object+4)!=1) return;
+ // A native mode action may clear eligibility while its old menu is still on screen.
+ // Do not re-arm that same container until an actual navigation edge is observed.
+ static uint32_t observedContext=0;
+ static int previousContainerMode=-1;
+ if(observedContext!=c) {observedContext=c;previousContainerMode=-1;}
+ // Native menu offset 44 holds the current container; offset 40 is its selected child.
+ uint32_t row=read(b,object+44);
+ int mode=-1;
+ for(unsigned depth=0;depth<12;++depth) {
+   if(row<records || (row-records)%96 || (row-records)/96>=quick_select_roster::totalCount) return;
+   const uint32_t id=(row-records)/96;
+   if(read(b,row)!=id) return;
+   if(id>=quick_select_roster::recordSlotBase &&
+      id<quick_select_roster::recordSlotBase+3*quick_select_roster::recordSlotStride &&
+      (id-quick_select_roster::recordSlotBase)%quick_select_roster::recordSlotStride==0) {
+     mode=static_cast<int>((id-quick_select_roster::recordSlotBase)/quick_select_roster::recordSlotStride);
+     break;
+   }
+   const uint32_t parent=read(b,row+4);
+   if(!parent || parent==id) break;
+   if(parent>=quick_select_roster::totalCount) return;
+   row=records+parent*96;
+ }
+ const bool entered=mode>=0 && mode!=previousContainerMode;
+ previousContainerMode=mode;
+ if(mode<0) return;
+ recordWeightMenuMode.store(static_cast<unsigned>(mode),std::memory_order_release);
+ if(entered && !recordPlaybackModeActive.exchange(true,std::memory_order_acq_rel)) {
+   if(auto* f=std::fopen("record-entry-test.txt","a")) {
+     std::fprintf(f,"enter-v2 mode=%d selected=%d samples=%u saved=%u,%u,%u\n",
+       mode,selectedRecordSlot.load(),firstPlaybackCount,
+       recordedSlotCounts[0],recordedSlotCounts[1],recordedSlotCounts[2]);std::fclose(f);
+   }
+ }
+ // Closing or navigating a submenu does not end the selected practice mode.
+ // Native mode selections and practice teardown perform the existing save/stop cleanup.
+}
 void QuickSelectSyncMenu(PPCRegister& object) {
  using namespace quick_select_apply_detail;
- std::lock_guard<std::mutex> lock(mutex);if(!needsSync)return;auto* b=memory();if(!b)return;
+ std::lock_guard<std::mutex> lock(mutex);auto* b=memory();if(!b)return;
  const uint32_t c=context(b), records=practice_rage_menu_detail::menuRecords.load(std::memory_order_acquire);
+ ObserveRecordPlaybackMenu(b,c,object.u32,records);
+ if(!needsSync)return;
  if(!c||read(b,c)!=0x8207D3E4u||object.u32!=c+116||!records)return;
  if(active())return;
  // BEGIN DUMMY SETTING TRACE V1
@@ -120,11 +166,61 @@ void QuickSelectSyncMenu(PPCRegister& object) {
   write(b,records+(503+delta)*96+80,p1);
   write(b,records+(504+delta)*96+80,p2);
   write(b,records+(505+delta)*96+80,stage);
+  // RECORD MODE FIX V1: sync the copies used inside Record/Playback.
+  const char* modeFlag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
+  if(modeFlag && std::strcmp(modeFlag,"1")==0) {
+    const uint32_t nested=quick_select_roster::recordQuickBase+mode*quick_select_roster::subtreeSize;
+    write(b,records+(nested+1)*96+80,p1);
+    write(b,records+(nested+2)*96+80,p2);
+    write(b,records+(nested+3)*96+80,stage);
+  }
  }
  needsSync=false;syncedContext=c;log("menu-synchronized",c,current.p1,current.p2);log("build-full-roster-v7");
 }
 void QuickSelectApplyAction(PPCRegister& object,PPCRegister& id) {
  using namespace quick_select_apply_detail;
+ // BEGIN DEFENSE COMMAND ACTION TRACE V1
+ TraceDefenseCommandEvent("apply",object.u32,id.u32,0,0);
+ // END DEFENSE COMMAND ACTION TRACE V1
+ // RECORD MODE SWITCH TEST V1: handle new mode choices and native mode selections.
+ const char* modeTest=std::getenv("TEKKEN6_TEST_RECORD_MODE");
+ if(modeTest && std::strcmp(modeTest,"1")==0) {
+   const bool custom=id.u32>=quick_select_roster::recordModeChoiceBase && id.u32<quick_select_roster::recordModeChoiceBase+9;
+   const bool native=id.u32==298 || id.u32==299 || id.u32==351 || id.u32==352 || id.u32==383 || id.u32==384;
+   if(custom||native) {
+     std::lock_guard<std::mutex> lock(mutex);uint8_t* b=memory();const uint32_t c=b?context(b):0;
+     if(!c || read(b,c)!=0x8207D3E4u || active() || object.u32!=0x827BF0D0u) return;
+     const int prev=selectedRecordSlot.load(std::memory_order_acquire);
+     if(prev>=0 && prev<3 && firstPlaybackCount<=1800) {
+       recordedSlotCounts[prev]=firstPlaybackCount;
+       std::memcpy(recordedSlotSamples[prev],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));
+     }
+     recordSlotRecording.store(false,std::memory_order_release);
+     firstPlaybackState.store(0,std::memory_order_release);
+     firstPlaybackCurrent.store(0,std::memory_order_relaxed);
+     firstPlaybackPosition=0;weightedPlaybackActive=false;
+     selectedRecordSlot.store(-1,std::memory_order_release);
+     recordSlotActive.store(false,std::memory_order_release);
+     recordPlaybackModeActive.store(false,std::memory_order_release);
+     opponentToggleTest.store(false,std::memory_order_release);
+     if(custom) {
+       const unsigned x=id.u32-quick_select_roster::recordModeChoiceBase, from=x/3, target=x%3;
+       // The native list for each mode contains the other two modes.
+       // RECORD MODE FIX V1: re-enter the selected native mode even when it matches the underlying mode.
+       const uint32_t nativeIds[3][3]={{351,298,299},{351,298,352},{383,384,299}};
+       const uint32_t action=nativeIds[from][target];
+       if(std::FILE* f=std::fopen("record-mode-test.txt","a")) {
+         std::fprintf(f,"from=%u target=%u native=%u saved_slot=%d samples=%u\n",from,target,action,prev,firstPlaybackCount);std::fclose(f);
+       }
+       // Current-mode choice only exits Record/Playback; other choices use the native callback.
+       if(action) id.u64=action;
+       return;
+     }
+     if(std::FILE* f=std::fopen("record-mode-test.txt","a")) {
+       std::fprintf(f,"native=%u saved_slot=%d samples=%u\n",id.u32,prev,firstPlaybackCount);std::fclose(f);
+     }
+   }
+ }
  // RECORD SLOTS MENU TEST V1: custom IDs fall through the native switch safely.
  const char* slots=std::getenv("TEKKEN6_TEST_RECORD_SLOTS");
  const char* controls=std::getenv("TEKKEN6_TEST_OPPONENT_CONTROL");
@@ -139,6 +235,39 @@ void QuickSelectApplyAction(PPCRegister& object,PPCRegister& id) {
    const uint32_t c=context(b);
    if(!c || read(b,c)!=0x8207D3E4u || active() || object.u32!=0x827BF0D0u ||
       recordSlotRecording.load(std::memory_order_acquire)) return;
+   // COMMAND MENU PROBE V1: request the same native action used in Defensive Training.
+   if(choice==5) {
+     const char* commandProbe=std::getenv("TEKKEN6_TEST_COMMAND_MENU");
+     if(commandProbe && std::strcmp(commandProbe,"1")==0) {
+       // BEGIN COMMAND TRANSITION TEST V1
+       // Let the native practice mode regain control while its command list is in use.
+       const char* transition=std::getenv("TEKKEN6_TEST_COMMAND_TRANSITION");
+       if(transition && std::strcmp(transition,"1")==0) {
+         const int previous=selectedRecordSlot.load(std::memory_order_acquire);
+         if(previous>=0 && previous<3 && firstPlaybackCount<=1800) {
+           recordedSlotCounts[previous]=firstPlaybackCount;
+           std::memcpy(recordedSlotSamples[previous],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));
+         }
+         firstPlaybackState.store(0,std::memory_order_release);
+         firstPlaybackCurrent.store(0,std::memory_order_relaxed);
+         firstPlaybackPosition=0;
+         selectedRecordSlot.store(-1,std::memory_order_release);
+         recordSlotActive.store(false,std::memory_order_release);
+     recordPlaybackModeActive.store(false,std::memory_order_release);
+         opponentToggleTest.store(false,std::memory_order_relaxed);
+         if(std::FILE* trace=std::fopen("command-transition-test.txt","a")) {
+           std::fprintf(trace,"released slot=%d samples=%u context=%08X\n",previous,firstPlaybackCount,c);
+           std::fclose(trace);
+         }
+       }
+       // END COMMAND TRANSITION TEST V1
+       if(std::FILE* trace=std::fopen("command-menu-probe.txt","a")) {
+         std::fprintf(trace,"native-action=386 context=%08X slot=%d\n",c,selectedRecordSlot.load());std::fclose(trace);
+       }
+       id.u64=386;
+     }
+     return;
+   }
    const int previous=selectedRecordSlot.load(std::memory_order_acquire);
    if(previous>=0 && previous<3 && firstPlaybackCount<=1800) {
      recordedSlotCounts[previous]=firstPlaybackCount;
@@ -150,13 +279,17 @@ void QuickSelectApplyAction(PPCRegister& object,PPCRegister& id) {
    if(choice==4) {
      selectedRecordSlot.store(-1,std::memory_order_release);
      recordSlotActive.store(false,std::memory_order_release);
+     recordPlaybackModeActive.store(false,std::memory_order_release);
      opponentToggleTest.store(false,std::memory_order_relaxed);
    } else {
      const int chosen=static_cast<int>(choice-1);
      firstPlaybackCount=recordedSlotCounts[chosen];
      std::memcpy(firstPlaybackSamples,recordedSlotSamples[chosen],firstPlaybackCount*sizeof(uint32_t));
+     // WEIGHTED PLAYBACK TEST V1: use the weights from this mode's menu tree.
+     recordWeightMenuMode.store((id.u32-quick_select_roster::recordSlotBase)/quick_select_roster::recordSlotStride,std::memory_order_release);
      selectedRecordSlot.store(chosen,std::memory_order_release);
      recordSlotActive.store(true,std::memory_order_release);
+     recordPlaybackModeActive.store(true,std::memory_order_release);
      opponentToggleTest.store(true,std::memory_order_relaxed);
    }
    if(std::FILE* f=std::fopen("record-slots-test.txt","a")) {
@@ -164,19 +297,39 @@ void QuickSelectApplyAction(PPCRegister& object,PPCRegister& id) {
    }
    return;
  }
- uint32_t mode=0;
+ // RECORD MODE FIX V1: accept Apply from the nested Quick Select copy.
+ uint32_t mode=0; bool nestedQuick=false;
  if(id.u32==506) mode=0;
  else if(id.u32==506+quick_select_roster::subtreeSize) mode=1;
  else if(id.u32==506+2*quick_select_roster::subtreeSize) mode=2;
- else return;
+ else if(id.u32>=quick_select_roster::recordQuickBase+4 &&
+         id.u32<quick_select_roster::recordQuickBase+3*quick_select_roster::subtreeSize &&
+         (id.u32-quick_select_roster::recordQuickBase)%quick_select_roster::subtreeSize==4) {
+   const char* flag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
+   if(!flag || std::strcmp(flag,"1")!=0) return;
+   mode=(id.u32-quick_select_roster::recordQuickBase)/quick_select_roster::subtreeSize;nestedQuick=true;
+ } else return;
  std::lock_guard<std::mutex> lock(mutex);auto* b=memory();if(!b)return;
  const uint32_t c=context(b), records=practice_rage_menu_detail::menuRecords.load(std::memory_order_acquire);
  if(active()||!c||c!=syncedContext||read(b,c)!=0x8207D3E4u||!records||object.u32!=0x827BF0D0u){log("apply-rejected",c);return;}
- const uint32_t delta=mode*quick_select_roster::subtreeSize;
+ const uint32_t delta=nestedQuick ? quick_select_roster::recordQuickBase+mode*quick_select_roster::subtreeSize-502 : mode*quick_select_roster::subtreeSize;
  const uint32_t p1=read(b,records+(503+delta)*96+80),p2=read(b,records+(504+delta)*96+80),stage=read(b,records+(505+delta)*96+80);
  if(p1>=quick_select_roster::fighterCount||p2>=quick_select_roster::fighterCount||stage>=quick_select_roster::stageCount){log("invalid-selection");return;}
  pending={choice(b,p1,current.p1),choice(b,p2,current.p2),quick_select_roster::stages[stage].id};
  if(pending.p1>=102||pending.p2>=102||pending.stage>=100){log("invalid-choice");return;}
+ if(nestedQuick) {
+   const int prev=selectedRecordSlot.load(std::memory_order_acquire);
+   if(prev>=0 && prev<3 && firstPlaybackCount<=1800) {
+     recordedSlotCounts[prev]=firstPlaybackCount;
+     std::memcpy(recordedSlotSamples[prev],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));
+   }
+   recordSlotRecording.store(false,std::memory_order_release);
+   firstPlaybackState.store(0,std::memory_order_release);firstPlaybackCurrent.store(0,std::memory_order_relaxed);
+   firstPlaybackPosition=0;weightedPlaybackActive=false;
+   selectedRecordSlot.store(-1,std::memory_order_release);recordSlotActive.store(false,std::memory_order_release);
+     recordPlaybackModeActive.store(false,std::memory_order_release);
+   opponentToggleTest.store(false,std::memory_order_release);
+ }
  phase=1;characterMask=0;stageSeen=false;nativeLoadReady=false;confirmMask=0;stageConfirmed=false;started=std::chrono::steady_clock::now();
  log("apply-requested",c,pending.p1,pending.p2);log("desired-stage",c,pending.stage);
  // Reuse the live native Character Select callback (including its teardown).

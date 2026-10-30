@@ -1,6 +1,7 @@
 #include <rex/ppc/context.h>
 
 #include <atomic>
+#include <random>
 #include <chrono>
 #include <cstdlib>
 #include <thread>
@@ -222,7 +223,15 @@ uint32_t recordedSlotSamples[3][1800] = {};
 unsigned recordedSlotCounts[3] = {};
 std::atomic<int> selectedRecordSlot{-1};
 std::atomic<bool> recordSlotActive{false};
+// RECORD ENTRY PLAYBACK V1: mode eligibility is independent of slot rehearsal.
+std::atomic<bool> recordPlaybackModeActive{false};
 std::atomic<bool> recordSlotRecording{false};
+// WEIGHTED PLAYBACK TEST V1
+std::atomic<unsigned> recordWeightMenuMode{0};
+uint32_t weightedPlaybackSamples[1800]={};
+unsigned weightedPlaybackCount=0;
+bool weightedPlaybackActive=false;
+bool PrepareWeightedPlayback();
 // END OPPONENT TOGGLE TEST V1
 void CapturePracticeHeld(PPCRegister &held)
 {
@@ -266,9 +275,14 @@ void CapturePracticeHeld(PPCRegister &held)
   // END OPPONENT TOGGLE INPUT V1
   // BEGIN RECORD PLAYBACK CYCLE V1
   if (const char *cycle=std::getenv("TEKKEN6_TEST_RECORD_CYCLE"); cycle && std::strcmp(cycle,"1")==0) {
-    static bool recording=false, previousCombo=false;
+    // RECORD MODE SWITCH TEST V1: menu switching can stop the recording safely.
+    static bool previousCombo=false;
+    bool recording=recordSlotRecording.load(std::memory_order_acquire);
     static std::chrono::steady_clock::time_point started;
-    const bool valid=enabled && std::strcmp(enabled,"1")==0 && practice;
+    const char* modeGate=std::getenv("TEKKEN6_TEST_RECORD_MODE");
+    const bool modeRequired=modeGate && std::strcmp(modeGate,"1")==0;
+    const bool valid=enabled && std::strcmp(enabled,"1")==0 && practice &&
+        (!modeRequired || recordPlaybackModeActive.load(std::memory_order_acquire));
     const bool combo=valid && (held.u32 & 0x4020u)==0x4020u;
     const bool edge=combo && !previousCombo;
     auto log=[](const char *event, unsigned count) {
@@ -293,6 +307,7 @@ void CapturePracticeHeld(PPCRegister &held)
           std::memcpy(recordedSlotSamples[previous],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));
         }
         recordSlotActive.store(false,std::memory_order_release);
+     recordPlaybackModeActive.store(false,std::memory_order_release);
       }
       firstPlaybackState.store(0,std::memory_order_release);
       previousCombo=false;
@@ -305,7 +320,8 @@ void CapturePracticeHeld(PPCRegister &held)
           firstPlaybackCount=0; firstPlaybackPosition=0; recording=true;
           recordSlotRecording.store(true,std::memory_order_release);
           started=std::chrono::steady_clock::now(); log("record-start",0);
-        } else if (firstPlaybackCount) {
+        } else if (firstPlaybackCount && !(std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK") && std::strcmp(std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK"),"1")==0)) {
+          weightedPlaybackActive=false;
           firstPlaybackPosition=0; firstPlaybackReads.store(0);
           firstPlaybackCurrent.store(0); firstPlaybackState.store(1,std::memory_order_release);
           log("play-start",firstPlaybackCount);
@@ -318,9 +334,25 @@ void CapturePracticeHeld(PPCRegister &held)
       const char* slotTest=std::getenv("TEKKEN6_TEST_RECORD_SLOTS");
       const bool playCombo=slotTest && std::strcmp(slotTest,"1")==0 &&
                            (held.u32 & 0x2020u)==0x2020u;
-      if (playCombo && !previousPlayCombo && !recording &&
-          selectedRecordSlot.load(std::memory_order_acquire)>=0 &&
-          firstPlaybackState.load(std::memory_order_acquire)!=1 && firstPlaybackCount>0) {
+      // WEIGHTED PLAYBACK TEST V1: select without replacing the active slot's recording.
+      const char* weightedEnv=std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK");
+      const bool weighted=weightedEnv && std::strcmp(weightedEnv,"1")==0;
+      // LOOP PLAYBACK TEST V1: a fresh Select+B edge stops active playback.
+      const char* loopEnv=std::getenv("TEKKEN6_TEST_LOOP_PLAYBACK");
+      const bool loopEnabled=loopEnv && std::strcmp(loopEnv,"1")==0;
+      if (loopEnabled && playCombo && !previousPlayCombo && !recording &&
+          firstPlaybackState.load(std::memory_order_acquire)==1) {
+        firstPlaybackState.store(2,std::memory_order_release);
+        firstPlaybackCurrent.store(0,std::memory_order_relaxed);
+        weightedPlaybackActive=false;
+        log("play-stopped",firstPlaybackPosition);
+      } else if (playCombo && !previousPlayCombo && !recording &&
+          (weighted ? recordPlaybackModeActive.load(std::memory_order_acquire) ||
+                      (!modeRequired && selectedRecordSlot.load(std::memory_order_acquire)>=0)
+                    : selectedRecordSlot.load(std::memory_order_acquire)>=0) &&
+          firstPlaybackState.load(std::memory_order_acquire)!=1 &&
+          (weighted ? PrepareWeightedPlayback() : firstPlaybackCount>0)) {
+        if(!weighted) weightedPlaybackActive=false;
         opponentToggleTest.store(false,std::memory_order_relaxed);
         firstPlaybackPosition=0;
         firstPlaybackReads.store(0,std::memory_order_relaxed);
@@ -338,8 +370,13 @@ void CapturePracticeHeld(PPCRegister &held)
       if (firstPlaybackState.load(std::memory_order_acquire)==1) {
         if (opponentToggleTest.load(std::memory_order_relaxed)) {
           firstPlaybackState.store(0,std::memory_order_release); log("play-cancelled",firstPlaybackPosition);
-        } else if (firstPlaybackPosition<firstPlaybackCount) {
-          firstPlaybackCurrent.store(firstPlaybackSamples[firstPlaybackPosition++],std::memory_order_relaxed);
+        } else if (firstPlaybackPosition<(weightedPlaybackActive?weightedPlaybackCount:firstPlaybackCount)) {
+          firstPlaybackCurrent.store(weightedPlaybackActive?weightedPlaybackSamples[firstPlaybackPosition++]:firstPlaybackSamples[firstPlaybackPosition++],std::memory_order_relaxed);
+        } else if (loopEnabled && (!weighted || PrepareWeightedPlayback())) {
+          // Pick again on each pass, retaining the current selected recording.
+          firstPlaybackPosition=0;
+          firstPlaybackCurrent.store(0,std::memory_order_relaxed);
+          log("play-loop",weighted?weightedPlaybackCount:firstPlaybackCount);
         } else {
           firstPlaybackState.store(2,std::memory_order_release); log("play-complete",firstPlaybackPosition);
         }
@@ -930,6 +967,31 @@ void TracePracticeWallSample(uint32_t held)
 #include "tekken6_quick_select_trace.inc"
 #include "tekken6_stage_load_trace.inc"
 #include "tekken6_quick_select_apply.inc"
+// WEIGHTED PLAYBACK TEST V1
+bool PrepareWeightedPlayback() {
+ using namespace quick_select_apply_detail;
+ std::lock_guard<std::mutex> lock(mutex);
+ auto* base=memory();const auto records=practice_rage_menu_detail::menuRecords.load(std::memory_order_acquire);
+ const auto c=base?context(base):0;const int selected=selectedRecordSlot.load(std::memory_order_acquire);
+ const unsigned mode=recordWeightMenuMode.load(std::memory_order_acquire);
+ if(!base||!records||!c||read(base,c)!=0x8207D3E4u||active()||selected>=3||mode>=3) return false;
+ if(selected<0 && !recordPlaybackModeActive.load(std::memory_order_acquire)) return false;
+ unsigned weights[3]={},counts[3]={},total=0;
+ for(unsigned i=0;i<3;++i) {
+   counts[i]=i==static_cast<unsigned>(selected)?firstPlaybackCount:recordedSlotCounts[i];
+   const uint32_t row=quick_select_roster::recordWeightBase+mode*quick_select_roster::weightModeSize+i*quick_select_roster::weightGroupSize;
+   const uint32_t weight=read(base,records+row*96+80);
+   if(counts[i]>0 && counts[i]<=1800 && weight<=10) {weights[i]=weight;total+=weight;}
+ }
+ if(!total) {if(auto* f=std::fopen("weighted-playback-test.txt","a")){std::fprintf(f,"no-eligible mode=%u\n",mode);std::fclose(f);}return false;}
+ static std::mt19937 rng(static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
+ unsigned draw=std::uniform_int_distribution<unsigned>(0,total-1)(rng),chosen=0;
+ for(;chosen<3;++chosen){if(draw<weights[chosen])break;draw-=weights[chosen];}
+ const uint32_t* source=chosen==static_cast<unsigned>(selected)?firstPlaybackSamples:recordedSlotSamples[chosen];
+ weightedPlaybackCount=counts[chosen];std::memcpy(weightedPlaybackSamples,source,weightedPlaybackCount*sizeof(uint32_t));weightedPlaybackActive=true;
+ if(auto* f=std::fopen("weighted-playback-test.txt","a")){std::fprintf(f,"mode=%u selected=%d played=%u weights=%u,%u,%u samples=%u\n",mode,selected+1,chosen+1,weights[0],weights[1],weights[2],weightedPlaybackCount);std::fclose(f);}
+ return true;
+}
 // BEGIN NATIVE DUMMY CONTROL TEST V1
 void NativeDummyControlTest(PPCRegister &selected, PPCRegister &owner) {
   using namespace quick_select_apply_detail;
@@ -956,7 +1018,7 @@ void NativeDummyControlTest(PPCRegister &selected, PPCRegister &owner) {
     else firstPlaybackState.store(3,std::memory_order_release);
   }
   // END FIRST PLAYBACK NATIVE V1
-  if (!opponentToggleTest.load(std::memory_order_relaxed) && firstPlaybackState.load(std::memory_order_acquire)!=1 && !recordSlotActive.load(std::memory_order_acquire)) return;
+  if (!opponentToggleTest.load(std::memory_order_relaxed) && firstPlaybackState.load(std::memory_order_acquire)!=1 && !recordSlotActive.load(std::memory_order_acquire) && !recordPlaybackModeActive.load(std::memory_order_acquire)) return;
   static std::FILE *f=std::fopen("native-control-apply.txt","w");
   static unsigned count=0;
   if(f && count++<50) {std::fprintf(f,"owner=%08X native=%u override=7\n",owner.u32,selected.u32);std::fflush(f);}

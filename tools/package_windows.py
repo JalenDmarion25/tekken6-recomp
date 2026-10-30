@@ -98,6 +98,7 @@ def main() -> None:
 
     search_dirs = [build, args.llvm_mingw_root / "x86_64-w64-mingw32/bin"]
     objdump_candidates = (
+        __import__("os").environ.get("TEKKEN6_OBJDUMP"),
         args.llvm_mingw_root / "bin" / "llvm-objdump.exe",
         args.llvm_mingw_root / "bin" / "x86_64-w64-mingw32-objdump.exe",
         args.llvm_mingw_root / "bin" / "x86_64-w64-mingw32-objdump",

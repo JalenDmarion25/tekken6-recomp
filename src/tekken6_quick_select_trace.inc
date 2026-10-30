@@ -92,8 +92,61 @@ void snapshot(const char* event, uint32_t a, uint32_t b,
 }
 }
 
+// BEGIN DEFENSE COMMAND TRACE V1
+void TraceDefenseCommandEvent(const char* kind, uint32_t object, uint32_t id,
+                              uint32_t action, uint32_t value) {
+  const char* enabled=std::getenv("TEKKEN6_TRACE_DEFENSE_COMMAND");
+  if (!enabled || std::strcmp(enabled,"1") != 0) return;
+  using namespace quick_select_trace_detail;
+  std::lock_guard<std::mutex> lock(mutex);
+  auto* runtime=rex::Runtime::instance();
+  if(!runtime) return;
+  const uint8_t* base=runtime->virtual_membase(); if(!base) return;
+  static std::FILE* f=std::fopen("defense-command-trace.txt","w");
+  static unsigned events=0;
+  if(!f || events>=1000) return;
+  const uint32_t root=read(base,0x82735C80u);
+  uint32_t service=0,ctx=0;
+  if(span(root,912) && read(base,root+12)==read(base,0x82735C84u) &&
+      (read(base,root+60)&read(base,0x82007560u))) {
+    service=read(base,root+908);
+    if(span(service,320)) {
+      const uint32_t candidate=read(base,service+312);
+      if(span(candidate,420) && read(base,candidate+12)==read(base,service+316) &&
+          (read(base,candidate+60)&read(base,0x82007560u))) ctx=candidate;
+    }
+  }
+  std::fprintf(f,"EVENT %u %s object=%08X id=%u action=%08X value=%08X context=%08X\n",
+               ++events,kind,object,id,action,value,ctx);
+  // BEGIN DEFENSE COMMAND DETAIL V2
+  if(ctx) {
+    dump(f,base,"practice-context",ctx,420);
+    // These are candidate guest pointers observed in practice-context snapshots.
+    const uint32_t offsets[]={0xB8u,0xC4u,0x184u,0x18Cu};
+    for(uint32_t offset:offsets) {
+      const uint32_t candidate=read(base,ctx+offset);
+      // Only inspect aligned addresses in the observed SystemHeap range.
+      if(candidate>=0xA0000000u && candidate<=0xBFFFFF00u && !(candidate&3)) {
+        char label[40];std::snprintf(label,sizeof(label),"context-pointer-%03X",offset);
+        dump(f,base,label,candidate,256);
+      }
+    }
+  }
+  if(span(object,4)) {
+    const uint32_t vt=read(base,object);
+    if(span(vt,576)) std::fprintf(f,"apply-callback-386=%08X\n",read(base,vt+572));
+  }
+  // END DEFENSE COMMAND DETAIL V2
+  if(span(object,4)) {
+    uint32_t vt=read(base,object);
+    if(span(vt,2000)) dump(f,base,"menu-vtable",vt+1880,120);
+  }
+  std::fflush(f);
+}
+// END DEFENSE COMMAND TRACE V1
 void TraceQuickSelectMenu(PPCRegister& object, PPCRegister& id,
                           PPCRegister& action, PPCRegister& value) {
+  TraceDefenseCommandEvent("menu",object.u32,id.u32,action.u32,value.u32); // DEFENSE COMMAND TRACE CALL V1
   // Record action rows associated with practice menus; avoid per-frame rows.
   const uint32_t n = id.u32;
   if (n == 300 || n == 346 || n == 347 || n == 353 || n == 378 ||

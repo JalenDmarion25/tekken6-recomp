@@ -76,7 +76,14 @@ constexpr uint32_t originalTotalCount=stageFirst+stageCount;
 constexpr uint32_t subtreeSize=originalTotalCount-502;
 // RECORD SLOTS MENU TEST V1: 3 menus, each with 4 action records.
 constexpr uint32_t recordSlotBase=originalTotalCount+2*subtreeSize;
-constexpr uint32_t recordSlotStride=5;
-constexpr uint32_t totalCount=recordSlotBase+3*recordSlotStride;
+constexpr uint32_t recordSlotStride=6; // COMMAND MENU PROBE V1
+// WEIGHTED PLAYBACK TEST V1: three menus, three weights, eleven values each.
+constexpr uint32_t recordWeightBase=recordSlotBase+3*recordSlotStride;
+constexpr uint32_t weightOptionCount=11, weightGroupSize=12, weightModeSize=36;
+// RECORD MODE SWITCH TEST V1: three mode-choice records per practice mode.
+constexpr uint32_t recordModeChoiceBase=recordWeightBase+3*weightModeSize;
+// RECORD MODE FIX V1: separate Quick Select copies for the Record/Playback panel.
+constexpr uint32_t recordQuickBase=recordModeChoiceBase+9;
+constexpr uint32_t totalCount=recordQuickBase+3*subtreeSize;
 constexpr uint32_t stringBudget=4096;
 }

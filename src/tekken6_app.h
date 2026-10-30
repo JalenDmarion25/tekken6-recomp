@@ -14,6 +14,46 @@
 void InstallTekken6CrashReport();
 #endif
 
+// BEGIN RECORD HUD TEST V1
+#include <atomic>
+#include <cstdlib>
+#include <cstring>
+#include <rex/ui/imgui_dialog.h>
+#include <imgui.h>
+extern std::atomic<int> selectedRecordSlot;
+extern std::atomic<bool> recordSlotActive;
+extern std::atomic<bool> recordPlaybackModeActive;
+extern std::atomic<bool> recordSlotRecording;
+extern std::atomic<bool> opponentToggleTest;
+extern std::atomic<unsigned> firstPlaybackState;
+
+class TekkenRecordHud final : public rex::ui::ImGuiDialog {
+ public:
+  explicit TekkenRecordHud(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+ protected:
+  void OnDraw(ImGuiIO& io) override {
+    const int slot=selectedRecordSlot.load(std::memory_order_acquire);
+    const bool hasSlot=slot>=0 && slot<3 && recordSlotActive.load(std::memory_order_acquire);
+    if(!hasSlot && !recordPlaybackModeActive.load(std::memory_order_acquire)) return;
+    const bool recording=recordSlotRecording.load(std::memory_order_acquire);
+    const bool controlling=opponentToggleTest.load(std::memory_order_relaxed);
+    const bool playing=firstPlaybackState.load(std::memory_order_acquire)==1;
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x*0.5f,io.DisplaySize.y*0.82f),ImGuiCond_Always,ImVec2(0.5f,0.5f));
+    ImGui::SetNextWindowBgAlpha(0.80f);
+    ImGuiWindowFlags flags=ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_AlwaysAutoResize|
+      ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoInputs;
+    if(ImGui::Begin("##tekken_record_hud",nullptr,flags)) {
+      if(hasSlot) ImGui::Text("SLOT %d",slot+1);
+      else ImGui::TextUnformatted("RECORD/PLAYBACK");
+      if(recording) ImGui::TextUnformatted("Select + X: Finish recording");
+      else if(playing) ImGui::TextUnformatted("Select + B: Stop playback"); // LOOP PLAYBACK TEST V1
+      else if(controlling) ImGui::TextUnformatted("Select + X: Start recording");
+      else ImGui::TextUnformatted("Select + B: Play recording");
+    }
+    ImGui::End();
+  }
+};
+// END RECORD HUD TEST V1
 class Tekken6App final : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -27,6 +67,11 @@ class Tekken6App final : public rex::ReXApp {
  protected:
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
     rex::ReXApp::OnCreateDialogs(drawer);
+    // BEGIN RECORD HUD CREATE V1
+    const char* recordHudTest=std::getenv("TEKKEN6_TEST_RECORD_HUD");
+    if(drawer && recordHudTest && std::strcmp(recordHudTest,"1")==0)
+      recordHud_=std::make_unique<TekkenRecordHud>(drawer);
+    // END RECORD HUD CREATE V1
     SetGuestFrameStats([this] {
       const auto* app_runtime = runtime();
       const auto* graphics = app_runtime ? app_runtime->graphics_system() : nullptr;
@@ -458,6 +503,9 @@ class Tekken6App final : public rex::ReXApp {
   }
 
  private:
+  // BEGIN RECORD HUD MEMBER V1
+  std::unique_ptr<TekkenRecordHud> recordHud_;
+  // END RECORD HUD MEMBER V1
   template <uint32_t Address, uint32_t SlotOffset,
             uint32_t VtableRegister = 12, uint32_t MethodRegister = 11>
   void InstallVirtualCallThunk() {
