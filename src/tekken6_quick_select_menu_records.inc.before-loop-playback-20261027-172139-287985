@@ -1,4 +1,4 @@
-// Native Quick Select records for the experimental Apply build.
+// Native QUICK SELECT records for the experimental Apply build.
 #pragma once
 #include <cstdint>
 #include "tekken6_quick_select_roster.inc"
@@ -50,7 +50,7 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
       write(base, entry + field * 4, minusOne);
   };
   using namespace quick_select_roster;
-  node(quickRow, 297, "Quick Select", 297, 4, playerRow, 299, 0);
+  node(quickRow, 297, "QUICK SELECT", 297, 4, playerRow, 299, 0);
   node(playerRow, 323, "Player", quickRow, fighterCount, playerFirst, 0, opponentRow);
   node(opponentRow, 323, "Opponent", quickRow, fighterCount, opponentFirst, playerRow, stageRow);
   node(stageRow, 323, "Stage", quickRow, stageCount, stageFirst, opponentRow, applyRow);
@@ -104,11 +104,11 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
     const char* weightedTest=std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK");
     const bool weightedEnabled=weightedTest && std::strcmp(weightedTest,"1")==0;
     const uint32_t parent[] = {297,350,382};
-    const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};
+    const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit RECORD/PLAYBACK"};
     for (uint32_t mode=0; mode<3; ++mode) {
       const uint32_t root=recordSlotBase+mode*recordSlotStride;
       const uint32_t quick=quickRow+mode*subtreeSize;
-      node(root,297,"Record/Playback",parent[mode],(commandEnabled?5:4)+(weightedEnabled?3:0),root+1,quick,0);
+      node(root,297,"RECORD/PLAYBACK",parent[mode],(commandEnabled?5:4)+(weightedEnabled?3:0),root+1,quick,0);
       write(base,records+quick*recordSize+24,root);
       write(base,records+parent[mode]*recordSize+8,4);
       for (uint32_t slot=0;slot<4;++slot)

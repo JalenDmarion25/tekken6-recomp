@@ -1,4 +1,4 @@
-// Native Quick Select records for the experimental Apply build.
+// Native QUICK SELECT records for the experimental Apply build.
 #pragma once
 #include <cstdint>
 #include "tekken6_quick_select_roster.inc"
@@ -50,7 +50,7 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
       write(base, entry + field * 4, minusOne);
   };
   using namespace quick_select_roster;
-  node(quickRow, 297, "Quick Select", 297, 4, playerRow, 299, 0);
+  node(quickRow, 297, "QUICK SELECT", 297, 4, playerRow, 299, 0);
   node(playerRow, 323, "Player", quickRow, fighterCount, playerFirst, 0, opponentRow);
   node(opponentRow, 323, "Opponent", quickRow, fighterCount, opponentFirst, playerRow, stageRow);
   node(stageRow, 323, "Stage", quickRow, stageCount, stageFirst, opponentRow, applyRow);
@@ -107,18 +107,18 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
     // RECORD MODE SWITCH TEST V1: retain the existing menu without the opt-in flag.
     const char* modeFlag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
     const bool modeEnabled=modeFlag && std::strcmp(modeFlag,"1")==0;
-    const char* label[]={"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};
+    const char* label[]={"Slot 1", "Slot 2", "Slot 3", "Exit RECORD/PLAYBACK"};
     for (uint32_t mode=0; mode<3; ++mode) {
       const uint32_t root=recordSlotBase+mode*recordSlotStride;
       const uint32_t quick=quickRow+mode*subtreeSize;
-      node(root,297,"Record/Playback",parent[mode],4+(weightedEnabled?3:0),modeEnabled?root+4:root+1,quick,0);
+      node(root,297,"RECORD/PLAYBACK",parent[mode],4+(weightedEnabled?3:0),modeEnabled?root+4:root+1,quick,0);
       write(base,records+quick*recordSize+24,root);
       write(base,records+parent[mode]*recordSize+8,4);
       // RECORD MODE SWITCH TEST V1: mode choices precede the slot actions.
       if(modeEnabled) {
         const uint32_t choices=recordModeChoiceBase+mode*3;
-        const char* modeLabels[]={"Free Style", "VS CPU Training", "Defensive Training"};
-        node(root+4,297,"Mode Select",root,3,choices,0,root+1);
+        const char* modeLabels[]={"FREE STYLE", "VS CPU Training", "DEFENSIVE TRAINING"};
+        node(root+4,297,"MODE SELECT",root,3,choices,0,root+1);
         for(uint32_t option=0;option<3;++option)
           node(choices+option,346,modeLabels[option],root+4,0,0,
                option?choices+option-1:0,option<2?choices+option+1:0);

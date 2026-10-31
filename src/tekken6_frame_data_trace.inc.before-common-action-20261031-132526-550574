@@ -1,0 +1,3 @@
+// FRAME DATA STANCE EXPANSION V1
+#pragma once
+#include "tekken6_frame_data_stance_expand_live.inc"

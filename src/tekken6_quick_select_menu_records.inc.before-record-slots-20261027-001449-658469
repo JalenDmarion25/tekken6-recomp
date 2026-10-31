@@ -1,4 +1,4 @@
-// Native Quick Select records for the experimental Apply build.
+// Native QUICK SELECT records for the experimental Apply build.
 #pragma once
 #include <cstdint>
 #include "tekken6_quick_select_roster.inc"
@@ -50,7 +50,7 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
       write(base, entry + field * 4, minusOne);
   };
   using namespace quick_select_roster;
-  node(quickRow, 297, "Quick Select", 297, 4, playerRow, 299, 0);
+  node(quickRow, 297, "QUICK SELECT", 297, 4, playerRow, 299, 0);
   node(playerRow, 323, "Player", quickRow, fighterCount, playerFirst, 0, opponentRow);
   node(opponentRow, 323, "Opponent", quickRow, fighterCount, opponentFirst, playerRow, stageRow);
   node(stageRow, 323, "Stage", quickRow, stageCount, stageFirst, opponentRow, applyRow);

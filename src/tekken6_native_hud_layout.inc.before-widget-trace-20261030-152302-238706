@@ -1,0 +1,56 @@
+// Native combat text positions. No changes to fonts, colors or game state.
+#pragma once
+void AdjustNativePracticeHud(PPCRegister& group,PPCRegister& format,
+ PPCRegister& a,PPCRegister& b,PPCRegister& x,PPCRegister& y,
+ PPCRegister& color,PPCRegister& label,PPCRegister& caller) {
+ if(!practiceRageOwner.load(std::memory_order_acquire))return;
+ // Return addresses identify ONLY the native practice HUD draw calls.
+ if(caller.u32==0x824636D4u && format.u32==0x8208BC3Cu) {
+   if(a.u32==300u)a.u32=210u; // white damage
+   return;
+ }
+ const bool animated=(caller.u32==0x824623ECu && format.u32==0x8208BBDCu)
+  ||(caller.u32==0x8246247Cu && format.u32==0x8208BBECu)
+  ||(caller.u32==0x82462634u && format.u32==0x8208BBFCu);
+ if(!animated)return;
+ if(label.u32==0x827C5494u && y.u32==330u)y.u32=240u;
+ else if(label.u32==0x827C54B4u && y.u32==360u)y.u32=270u;
+ else if(label.u32==0x827C54F4u && y.u32==430u) {
+   y.u32=320u; x.s64=int64_t(x.s32)-30; // WALL HIT, below COUNTER
+ }
+ else if(label.u32==0x827C54D4u && y.u32==410u) {
+   y.u32=300u; x.s64=int64_t(x.s32)-30; // preserve entrance/exit animation
+ }
+}
+
+namespace native_hud_node_trace {
+thread_local uint32_t scene=0,nodeIndex=0,caller=0;
+uint32_t Read(const uint8_t* p,uint32_t a) {
+ return uint32_t(p[a])<<24|uint32_t(p[a+1])<<16|uint32_t(p[a+2])<<8|p[a+3];
+}
+bool Enabled(){const char* f=std::getenv("TEKKEN6_TRACE_NATIVE_HUD_NODES");
+ return f && std::strcmp(f,"1")==0 && practiceRageOwner.load(std::memory_order_acquire);}
+}
+void BeginNativePracticeHudNode(PPCRegister& scene,PPCRegister& index,PPCRegister& caller) {
+ native_hud_node_trace::scene=scene.u32;
+ native_hud_node_trace::nodeIndex=index.u32;
+ native_hud_node_trace::caller=caller.u32;
+}
+void InspectNativePracticeHudNode(PPCRegister& node) {
+ using namespace native_hud_node_trace;
+ if(!Enabled() || node.u32<0x10000u || node.u32>0xBFFFFE00u)return;
+ auto* r=rex::Runtime::instance();auto* p=r?r->virtual_membase():nullptr;if(!p)return;
+ static std::mutex mutex;std::lock_guard<std::mutex> lock(mutex);
+ static std::map<uint64_t,unsigned> seen;
+ const uint64_t key=uint64_t(scene)<<32|nodeIndex;
+ if(seen.size()>=512 && !seen.count(key))return;
+ if(seen[key]>=2)return;
+ ++seen[key];
+ static std::FILE* f=std::fopen("native-practice-hud-nodes.txt","w");if(!f)return;
+ std::fprintf(f,"scene=%08X index=%u node=%08X caller=%08X sample=%u\n",scene,nodeIndex,node.u32,caller,seen[key]);
+ for(unsigned i=0;i<512;i+=4) {
+   uint32_t v=Read(p,node.u32+i);float number;std::memcpy(&number,&v,4);
+   std::fprintf(f,"+%03X %08X f=%.7g\n",i,v,double(number));
+ }
+ std::fflush(f);
+}

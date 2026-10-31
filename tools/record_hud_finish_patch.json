@@ -1,0 +1,37 @@
+{
+  "patches": {
+    "src/tekken6_guest_hooks.cpp": [
+      [
+        "#include \"tekken6_record_flow.inc\" // RECORD FLOW V1",
+        "#include \"tekken6_record_flow.inc\" // RECORD FLOW V1\n#include \"tekken6_record_hud_finish.inc\" // RECORD HUD FINISH V1"
+      ],
+      [
+        "      log(reason,firstPlaybackCount);",
+        "      // Save/open pause only for completed recordings, never teardown.\n      if(std::strcmp(reason,\"record-stop-start\")==0 ||\n         std::strcmp(reason,\"time-limit\")==0 || std::strcmp(reason,\"sample-limit\")==0) {\n        const int slot=selectedRecordSlot.load(std::memory_order_acquire);\n        if(slot>=0 && slot<static_cast<int>(kRecordSlotCount) && firstPlaybackCount<=1800) {\n          recordedSlotCounts[slot]=firstPlaybackCount;\n          std::memcpy(recordedSlotSamples[slot],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));\n        }\n        if(std::strcmp(reason,\"record-stop-start\")!=0)\n          recordTimeRemainingMillis.store(0,std::memory_order_release);\n        recordPauseRequestedOwner.store(practiceRageOwner.load(std::memory_order_acquire),std::memory_order_release);\n      }\n      log(reason,firstPlaybackCount);"
+      ],
+      [
+        "      recordFinishStartRequested.store(false,std::memory_order_release);",
+        "      recordPauseRequestedOwner.store(0,std::memory_order_release); // RECORD HUD FINISH V1\n      recordFinishStartRequested.store(false,std::memory_order_release);"
+      ],
+      [
+        "          recordWaitingForRelease=true; // Ignore the initiating Select+X until both are released.",
+        "          recordWaitingForRelease=true; // Ignore the initiating Select+X until both are released.\n          recordTimeRemainingMillis.store(30000,std::memory_order_release);\n          recordPauseRequestedOwner.store(0,std::memory_order_release);"
+      ],
+      [
+        "      if (recording) {\n        if(recordWaitingForRelease) {",
+        "      if (recording) {\n        const auto elapsedMs=std::chrono::duration_cast<std::chrono::milliseconds>(\n          std::chrono::steady_clock::now()-started).count();\n        const unsigned remaining=recordWaitingForRelease?30000u:\n          (elapsedMs>=30000?0u:static_cast<unsigned>(30000-elapsedMs));\n        recordTimeRemainingMillis.store(remaining,std::memory_order_release);\n        if(recordWaitingForRelease) {"
+      ]
+    ],
+    "src/tekken6_app.h": [
+      [
+        "extern std::atomic<bool> recordSlotRecording;",
+        "extern std::atomic<bool> recordSlotRecording;\nextern std::atomic<unsigned> recordTimeRemainingMillis; // RECORD HUD FINISH V1"
+      ],
+      [
+        "class TekkenRecordHud final : public rex::ui::ImGuiDialog {\n public:\n  explicit TekkenRecordHud(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}\n protected:\n  void OnDraw(ImGuiIO& io) override {\n    const int slot=selectedRecordSlot.load(std::memory_order_acquire);\n    const bool hasSlot=slot>=0 && slot<8 && recordSlotActive.load(std::memory_order_acquire);\n    if(!hasSlot && !recordPlaybackModeActive.load(std::memory_order_acquire)) return;\n    const bool recording=recordSlotRecording.load(std::memory_order_acquire);\n    const bool controlling=opponentToggleTest.load(std::memory_order_relaxed);\n    const bool playing=firstPlaybackState.load(std::memory_order_acquire)==1;\n    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x*0.5f,io.DisplaySize.y*0.82f),ImGuiCond_Always,ImVec2(0.5f,0.5f));\n    ImGui::SetNextWindowBgAlpha(0.80f);\n    ImGuiWindowFlags flags=ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_AlwaysAutoResize|\n      ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoInputs;\n    if(ImGui::Begin(\"##tekken_record_hud\",nullptr,flags)) {\n      if(hasSlot) ImGui::Text(\"SLOT %d\",slot+1);\n      else ImGui::TextUnformatted(\"RECORD/PLAYBACK\");\n      if(recording) ImGui::TextUnformatted(\"Start: Finish recording\");\n      else if(playing) ImGui::TextUnformatted(\"Select + B: Stop playback\"); // LOOP PLAYBACK TEST V1\n      else if(controlling) ImGui::TextUnformatted(\"Select + X: Start recording\");\n      else ImGui::TextUnformatted(\"Select + B: Play recording\");\n    }\n    ImGui::End();\n  }\n};\n",
+        "class TekkenRecordHud final : public rex::ui::ImGuiDialog {\n public:\n  explicit TekkenRecordHud(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}\n protected:\n  void OnDraw(ImGuiIO& io) override {\n    const int slot=selectedRecordSlot.load(std::memory_order_acquire);\n    const bool hasSlot=slot>=0 && slot<8 && recordSlotActive.load(std::memory_order_acquire);\n    if(!hasSlot && !recordPlaybackModeActive.load(std::memory_order_acquire)) return;\n    const bool recording=recordSlotRecording.load(std::memory_order_acquire);\n    const bool controlling=opponentToggleTest.load(std::memory_order_relaxed);\n    const bool playing=firstPlaybackState.load(std::memory_order_acquire)==1;\n    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x*0.5f,io.DisplaySize.y*0.17f),ImGuiCond_Always,ImVec2(0.5f,0.0f));\n    ImGui::SetNextWindowBgAlpha(0.80f);\n    ImGuiWindowFlags flags=ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_AlwaysAutoResize|\n      ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoInputs;\n    if(ImGui::Begin(\"##tekken_record_hud\",nullptr,flags)) {\n      // RECORD HUD FINISH V1: countdown begins after the start chord is released.\n      if(hasSlot) ImGui::Text(\"SLOT %d\",slot+1);\n      else ImGui::TextUnformatted(\"RECORD/PLAYBACK\");\n      if(recording) ImGui::TextUnformatted(\"Start: Finish recording\");\n      else if(playing) ImGui::TextUnformatted(\"Select + B: Stop playback\"); // LOOP PLAYBACK TEST V1\n      else if(controlling) ImGui::TextUnformatted(\"Select + X: Start recording\");\n      else ImGui::TextUnformatted(\"Select + B: Play recording\");\n      if(recording) {\n        const unsigned ms=recordTimeRemainingMillis.load(std::memory_order_acquire);\n        ImGui::Text(\"Time left: %.1f s\",static_cast<double>(ms)/1000.0);\n      }\n    }\n    ImGui::End();\n  }\n};\n"
+      ]
+    ]
+  },
+  "config": "\n# BEGIN RECORD HUD FINISH V1\n[[midasm_hook]]\naddress = 0x8238EFBC\nname = \"RecordFinishPauseInput\"\nregisters = [\"r3\", \"r25\", \"r31\"]\n\n[[midasm_hook]]\naddress = 0x824631B8\nname = \"HideRecordControllerPrompt\"\nregisters = [\"r3\"]\n# END RECORD HUD FINISH V1\n\n"
+}

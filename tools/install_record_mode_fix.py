@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fix experimental record mode's Free Style action and nested Quick Select."""
+"""Fix experimental record mode's FREE STYLE action and nested QUICK SELECT."""
 from pathlib import Path
 from datetime import datetime
 import argparse,shutil
@@ -10,11 +10,11 @@ def sub(n,old,new):
  if s[n].count(old)!=1:raise SystemExit('Unexpected source in '+n+': '+old[:80])
  s[n]=s[n].replace(old,new,1)
 r,m,q=names
-sub(r,'constexpr uint32_t totalCount=recordModeChoiceBase+9;','''// RECORD MODE FIX V1: separate Quick Select copies for the Record/Playback panel.
+sub(r,'constexpr uint32_t totalCount=recordModeChoiceBase+9;','''// RECORD MODE FIX V1: separate QUICK SELECT copies for the RECORD/PLAYBACK panel.
 constexpr uint32_t recordQuickBase=recordModeChoiceBase+9;
 constexpr uint32_t totalCount=recordQuickBase+3*subtreeSize;''')
-sub(m,'node(root+4,297,"Mode Select",root,3,choices,0,root+1);','''// RECORD MODE FIX V1: fourth choice opens an independently linked Quick Select.
-        node(root+4,297,"Mode Select",root,4,choices,0,root+1);''')
+sub(m,'node(root+4,297,"MODE SELECT",root,3,choices,0,root+1);','''// RECORD MODE FIX V1: fourth choice opens an independently linked QUICK SELECT.
+        node(root+4,297,"MODE SELECT",root,4,choices,0,root+1);''')
 sub(m,'''option?choices+option-1:0,option<2?choices+option+1:0);
         for (uint32_t slot=0;slot<3;++slot)''','''option?choices+option-1:0,option<2?choices+option+1:recordQuickBase+mode*subtreeSize);
         const uint32_t srcRoot=quickRow+mode*subtreeSize;
@@ -38,7 +38,7 @@ sub(q,'const uint32_t nativeIds[3][3]={{0,298,299},{351,0,352},{383,384,0}};',''
 sub(q,'''  write(b,records+(505+delta)*96+80,stage);
  }
  needsSync=false''','''  write(b,records+(505+delta)*96+80,stage);
-  // RECORD MODE FIX V1: sync the copies used inside Record/Playback.
+  // RECORD MODE FIX V1: sync the copies used inside RECORD/PLAYBACK.
   const char* modeFlag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
   if(modeFlag && std::strcmp(modeFlag,"1")==0) {
     const uint32_t nested=quick_select_roster::recordQuickBase+mode*quick_select_roster::subtreeSize;
@@ -52,7 +52,7 @@ sub(q,''' uint32_t mode=0;
  if(id.u32==506) mode=0;
  else if(id.u32==506+quick_select_roster::subtreeSize) mode=1;
  else if(id.u32==506+2*quick_select_roster::subtreeSize) mode=2;
- else return;''',''' // RECORD MODE FIX V1: accept Apply from the nested Quick Select copy.
+ else return;''',''' // RECORD MODE FIX V1: accept Apply from the nested QUICK SELECT copy.
  uint32_t mode=0; bool nestedQuick=false;
  if(id.u32==506) mode=0;
  else if(id.u32==506+quick_select_roster::subtreeSize) mode=1;

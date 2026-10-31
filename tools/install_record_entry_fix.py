@@ -1,4 +1,4 @@
-"""Separate Record/Playback eligibility from selection of a recording slot."""
+"""Separate RECORD/PLAYBACK eligibility from selection of a recording slot."""
 from pathlib import Path
 import datetime
 import json

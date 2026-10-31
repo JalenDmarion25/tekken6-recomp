@@ -16,7 +16,7 @@ sub(m,'    const uint32_t parent[] = {297,350,382};','''    // COMMAND MENU PROB
     const char* commandProbe=std::getenv("TEKKEN6_TEST_COMMAND_MENU");
     const bool commandEnabled=commandProbe && std::strcmp(commandProbe,"1")==0;
     const uint32_t parent[] = {297,350,382};''')
-sub(m,'node(root,297,"Record/Playback",parent[mode],4,root+1,quick,0);','node(root,297,"Record/Playback",parent[mode],commandEnabled?5:4,root+1,quick,0);')
+sub(m,'node(root,297,"RECORD/PLAYBACK",parent[mode],4,root+1,quick,0);','node(root,297,"RECORD/PLAYBACK",parent[mode],commandEnabled?5:4,root+1,quick,0);')
 sub(m,'''             slot?root+slot:0,slot<3?root+2+slot:0);
     }
   }
@@ -32,7 +32,7 @@ sub(f,'''   if(!c || read(b,c)!=0x8207D3E4u || active() || object.u32!=0x827BF0D
       recordSlotRecording.load(std::memory_order_acquire)) return;
    const int previous=selectedRecordSlot.load(std::memory_order_acquire);''','''   if(!c || read(b,c)!=0x8207D3E4u || active() || object.u32!=0x827BF0D0u ||
       recordSlotRecording.load(std::memory_order_acquire)) return;
-   // COMMAND MENU PROBE V1: request the same native action used in Defensive Training.
+   // COMMAND MENU PROBE V1: request the same native action used in DEFENSIVE TRAINING.
    if(choice==5) {
      const char* commandProbe=std::getenv("TEKKEN6_TEST_COMMAND_MENU");
      if(commandProbe && std::strcmp(commandProbe,"1")==0) {

@@ -1,4 +1,4 @@
-"""Add the native Quick Select layout below Mode Select / Defensive Training."""
+"""Add the native QUICK SELECT layout below MODE SELECT / DEFENSIVE TRAINING."""
 import argparse
 import datetime
 from pathlib import Path
@@ -19,7 +19,7 @@ def main():
     original = rage.read_text(encoding='utf-8-sig')
     if args.remove:
         if INCLUDE not in original and CALL not in original:
-            print('Quick Select layout is not installed.')
+            print('QUICK SELECT layout is not installed.')
             return
         for token in [INCLUDE, CALL, 'constexpr uint32_t totalCount = 516;',
                       'totalCount * (recordSize + textSize) + 768']:
@@ -33,11 +33,11 @@ def main():
         shutil.copy2(rage, rage.with_name(rage.name + '.before-layout-removal-' + stamp))
         with rage.open('w', encoding='utf-8', newline='\n') as output:
             output.write(changed)
-        print('Quick Select layout removed; completed experiments remain disabled. Build/package again.')
+        print('QUICK SELECT layout removed; completed experiments remain disabled. Build/package again.')
         return
     if INCLUDE in original or CALL in original:
         if INCLUDE in original and CALL in original and 'totalCount = 516;' in original:
-            print('Quick Select layout is already installed.')
+            print('QUICK SELECT layout is already installed.')
             return
         raise SystemExit('Partial menu-layout installation; restore its backup before retrying.')
     if not (root / 'src/tekken6_quick_select_menu_records.inc').is_file():
@@ -85,7 +85,7 @@ def main():
             shutil.copy2(path, path.with_name(path.name + '.before-quick-select-layout-' + stamp))
             with path.open('w', encoding='utf-8', newline='\n') as output:
                 output.write(after)
-    print('Quick Select layout installed; completed selection experiments disabled. Regenerate/build/package.')
+    print('QUICK SELECT layout installed; completed selection experiments disabled. Regenerate/build/package.')
 
 
 if __name__ == '__main__':

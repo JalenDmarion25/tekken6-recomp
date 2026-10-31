@@ -1,5 +1,5 @@
 // Include once, at the END of tekken6_guest_hooks.cpp.
-// Experimental native Free Style practice-menu extension for the supplied XEX.
+// Experimental native FREE STYLE practice-menu extension for the supplied XEX.
 #pragma once
 #include "tekken6_quick_select_menu_records.inc"
 #include <rex/runtime.h>
@@ -102,8 +102,8 @@ void InstallPracticeRageMenu(PPCRegister& records, PPCRegister& texts) {
     return result;
   };
   const uint32_t minusOne = text("-1");
-  const char* labels[] = {"Player Rage", "Off", "On",
-                          "Opponent Rage", "Off", "On"};
+  const char* labels[] = {"PLAYER RAGE", "OFF", "ON",
+                          "OPPONENT RAGE", "OFF", "ON"};
   for (uint32_t n = 0; n < 6; ++n) {
     const uint32_t id = originalCount + n;
     const uint32_t source = n % 3 == 0 ? 323 : (n % 3 == 1 ? 324 : 325);

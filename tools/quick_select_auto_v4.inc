@@ -94,7 +94,7 @@ void QuickSelectApplyAction(PPCRegister& object,PPCRegister& id) {
  if(pending.p1>=102||pending.p2>=102||pending.stage>=100){log("invalid-choice");return;}
  phase=1;characterMask=0;stageSeen=false;nativeLoadReady=false;confirmMask=0;started=std::chrono::steady_clock::now();
  log("apply-requested",c,pending.p1,pending.p2);log("desired-stage",c,pending.stage);
- // Reuse the live native Character Select callback (including its teardown).
+ // Reuse the live native CHARACTER SELECT callback (including its teardown).
  // This register is the dispatch argument, not the menu record's ID.
  id.u64=346;
 }

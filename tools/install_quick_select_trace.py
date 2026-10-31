@@ -42,7 +42,7 @@ def main():
         if BEGIN in cfg:
             if END not in cfg or INCLUDE not in cpp:
                 raise SystemExit('Partial installation found; run --remove, then reinstall.')
-            print('Quick Select tracing is already installed.')
+            print('QUICK SELECT tracing is already installed.')
             return
         if INCLUDE in cpp:
             raise SystemExit('Trace include already exists without its config block; run --remove.')
@@ -87,8 +87,8 @@ def main():
             shutil.copy2(path, path.with_name(path.name + '.before-quick-select-' + stamp))
             with path.open('w', encoding='utf-8', newline='\n') as output:
                 output.write(after)
-    print('Quick Select tracing removed.' if args.remove else
-          'Quick Select tracing installed. Regenerate, build, and package as usual.')
+    print('QUICK SELECT tracing removed.' if args.remove else
+          'QUICK SELECT tracing installed. Regenerate, build, and package as usual.')
 
 
 if __name__ == '__main__':

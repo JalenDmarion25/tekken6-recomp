@@ -51,8 +51,8 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
     for (uint32_t field = 1; field <= 4; ++field)
       write(base, entry + field * 4, minusOne);
   };
-  // Clone Mode Select's submenu role, with a separate parent and child list.
-  node(quickRow, 297, "Quick Select", 297, 3, playerRow, 299, 0);
+  // Clone MODE SELECT's submenu role, with a separate parent and child list.
+  node(quickRow, 297, "QUICK SELECT", 297, 3, playerRow, 299, 0);
   node(playerRow, 323, "Player", quickRow, 4, 504, 0, opponentRow);
   node(opponentRow, 323, "Opponent", quickRow, 4, 509, playerRow, stageRow);
   node(stageRow, 323, "Stage", quickRow, 2, 514, opponentRow, 0);

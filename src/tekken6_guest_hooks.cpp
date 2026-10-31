@@ -59,8 +59,11 @@ thread_local bool firstPlaybackTarget=false;
 // BEGIN OPPONENT CONTROL EXPERIMENT V1
 thread_local bool opponentControlSuppressP1 = false;
 // END OPPONENT CONTROL EXPERIMENT V1
+uint32_t DecodeRecordPlaybackDirection(uint32_t input); // RECORD FACING PLAYBACK V1
+void FilterRecordingStart(PPCRegister& caller,PPCRegister& buttons); // RECORD FLOW V1
 void TraceTekkenButtons(PPCRegister &object, PPCRegister &buttons)
 {
+  FilterRecordingStart(object,buttons);
   // BEGIN OPPONENT CONTROL RETURN V1
   if (opponentControlSuppressP1 &&
       (object.u32 == 0x822A45CCu || object.u32 == 0x822A45E0u)) {
@@ -70,7 +73,7 @@ void TraceTekkenButtons(PPCRegister &object, PPCRegister &buttons)
   // BEGIN FIRST PLAYBACK RETURN V1
   if (firstPlaybackTarget && firstPlaybackState.load(std::memory_order_acquire)==1 &&
       (object.u32==0x822A45CCu || object.u32==0x822A45E0u)) {
-    buttons.u64=firstPlaybackCurrent.load(std::memory_order_relaxed);
+    buttons.u64=DecodeRecordPlaybackDirection(firstPlaybackCurrent.load(std::memory_order_relaxed));
     firstPlaybackReads.fetch_add(1,std::memory_order_relaxed);
   }
   // END FIRST PLAYBACK RETURN V1
@@ -219,8 +222,9 @@ void LogPracticeSide(
 // BEGIN OPPONENT TOGGLE TEST V1
 std::atomic<bool> opponentToggleTest{false};
 // RECORD SLOTS MENU TEST V1: gameplay updates stop while the practice menu is open.
-uint32_t recordedSlotSamples[3][1800] = {};
-unsigned recordedSlotCounts[3] = {};
+constexpr unsigned kRecordSlotCount=8; // EIGHT RECORD SLOTS V1
+uint32_t recordedSlotSamples[kRecordSlotCount][1800] = {};
+unsigned recordedSlotCounts[kRecordSlotCount] = {};
 std::atomic<int> selectedRecordSlot{-1};
 std::atomic<bool> recordSlotActive{false};
 // RECORD ENTRY PLAYBACK V1: mode eligibility is independent of slot rehearsal.
@@ -232,10 +236,46 @@ uint32_t weightedPlaybackSamples[1800]={};
 unsigned weightedPlaybackCount=0;
 bool weightedPlaybackActive=false;
 bool PrepareWeightedPlayback();
+#include "tekken6_record_flow.inc" // RECORD FLOW V1
+#include "tekken6_record_hud_finish.inc" // RECORD HUD FINISH V1
+#include "tekken6_record_facing.inc" // RECORD FACING PLAYBACK V1
 // END OPPONENT TOGGLE TEST V1
+// RECORD FACING PROBE V1: read-only, throttled gameplay snapshots.
+void TraceRecordPlaybackFacing(uint32_t held) {
+ const char* enabled=std::getenv("TEKKEN6_TRACE_RECORD_FACING");
+ if(!enabled || std::strcmp(enabled,"1")!=0 || !practiceRageOwner.load(std::memory_order_acquire) ||
+    !recordPlaybackModeActive.load(std::memory_order_acquire)) return;
+ auto* runtime=rex::Runtime::instance();auto* b=runtime?runtime->virtual_membase():nullptr;if(!b)return;
+ auto read=[&](uint32_t a){return uint32_t(b[a])<<24|uint32_t(b[a+1])<<16|uint32_t(b[a+2])<<8|b[a+3];};
+ static std::mutex mutex;std::lock_guard<std::mutex> lock(mutex);
+ static std::FILE* f=std::fopen("record-facing-trace.txt","w");
+ static unsigned count=0;static uint32_t previousHeld=0xFFFFFFFFu;
+ static auto last=std::chrono::steady_clock::time_point{};
+ const auto now=std::chrono::steady_clock::now();
+ if(!f || count>=6000 || (held==previousHeld && now-last<std::chrono::milliseconds(100)))return;
+ if(!count) {
+   std::fprintf(f,"RECORD FACING TRACE V1\ninput-direction-table");
+   for(uint32_t i=0;i<18;++i)std::fprintf(f," %08X",read(0x8200EF28u+i*4));
+   std::fprintf(f,"\nfields: 04C 050 0C4 0C8 0CC 0D0 0D4 0D8 0DC 0E0 110 114 118 288 28C\n");
+ }
+ previousHeld=held;last=now;
+ std::fprintf(f,"sample=%u held=%08X slot=%d recording=%u playback=%u",++count,held,
+   selectedRecordSlot.load(),unsigned(recordSlotRecording.load()),firstPlaybackState.load());
+ const uint32_t offsets[]={0x4Cu,0x50u,0xC4u,0xC8u,0xCCu,0xD0u,0xD4u,0xD8u,0xDCu,0xE0u,0x110u,0x114u,0x118u,0x288u,0x28Cu};
+ for(uint32_t fighter:{0x82900C00u,0x82901840u}) {
+   std::fprintf(f,"\n%08X",fighter);
+   for(uint32_t offset:offsets)std::fprintf(f," %08X",read(fighter+offset));
+ }
+ std::fprintf(f,"\n");std::fflush(f);
+}
+
+void CaptureTekkenFrameDataCandidates(uint32_t held);
+
 void CapturePracticeHeld(PPCRegister &held)
 {
   practiceHeld.store(held.u32, std::memory_order_relaxed);
+  CaptureTekkenFrameDataCandidates(held.u32);
+  TraceRecordPlaybackFacing(held.u32);
   // BEGIN RECORD FRAME TRACE V1
   if (const char *path=std::getenv("TEKKEN6_RECORD_FRAME_TRACE")) {
     if (*path && practiceRageOwner.load(std::memory_order_acquire)) {
@@ -277,7 +317,9 @@ void CapturePracticeHeld(PPCRegister &held)
   if (const char *cycle=std::getenv("TEKKEN6_TEST_RECORD_CYCLE"); cycle && std::strcmp(cycle,"1")==0) {
     // RECORD MODE SWITCH TEST V1: menu switching can stop the recording safely.
     static bool previousCombo=false;
+    static bool recordWaitingForRelease=false; // RECORD START RELEASE V1
     bool recording=recordSlotRecording.load(std::memory_order_acquire);
+    if(!recording) recordWaitingForRelease=false;
     static std::chrono::steady_clock::time_point started;
     const char* modeGate=std::getenv("TEKKEN6_TEST_RECORD_MODE");
     const bool modeRequired=modeGate && std::strcmp(modeGate,"1")==0;
@@ -291,18 +333,34 @@ void CapturePracticeHeld(PPCRegister &held)
       }
     };
     auto finish=[&](const char *reason) {
+      recordWaitingForRelease=false;
       recording=false;
       recordSlotRecording.store(false,std::memory_order_release);
       // Retain the native Controller setting until the menu is opened again.
       opponentToggleTest.store(false,std::memory_order_relaxed);
+      // Save/open pause only for completed recordings, never teardown.
+      if(std::strcmp(reason,"record-stop-start")==0 ||
+         std::strcmp(reason,"time-limit")==0 || std::strcmp(reason,"sample-limit")==0) {
+        const int slot=selectedRecordSlot.load(std::memory_order_acquire);
+        if(slot>=0 && slot<static_cast<int>(kRecordSlotCount) && firstPlaybackCount<=1800) {
+          recordedSlotCounts[slot]=firstPlaybackCount;
+          std::memcpy(recordedSlotSamples[slot],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));
+        }
+        if(std::strcmp(reason,"record-stop-start")!=0)
+          recordTimeRemainingMillis.store(0,std::memory_order_release);
+        recordPauseRequestedOwner.store(practiceRageOwner.load(std::memory_order_acquire),std::memory_order_release);
+      }
       log(reason,firstPlaybackCount);
     };
     if (!valid) {
+      recordPauseRequestedOwner.store(0,std::memory_order_release); // RECORD HUD FINISH V1
+      recordFinishStartRequested.store(false,std::memory_order_release);
+      recordFinishStartHeld.store(false,std::memory_order_release);
       // RECORD SLOTS MENU TEST V1: detach when the practice owner goes away.
       if (recording) finish("practice-ended");
       if (const char* slotTest=std::getenv("TEKKEN6_TEST_RECORD_SLOTS"); slotTest && std::strcmp(slotTest,"1")==0) {
         const int previous=selectedRecordSlot.exchange(-1,std::memory_order_acq_rel);
-        if(previous>=0 && previous<3 && firstPlaybackCount<=1800) {
+        if(previous>=0 && previous<static_cast<int>(kRecordSlotCount) && firstPlaybackCount<=1800) {
           recordedSlotCounts[previous]=firstPlaybackCount;
           std::memcpy(recordedSlotSamples[previous],firstPlaybackSamples,firstPlaybackCount*sizeof(uint32_t));
         }
@@ -313,11 +371,15 @@ void CapturePracticeHeld(PPCRegister &held)
       previousCombo=false;
     } else {
       if (recording && !opponentToggleTest.load(std::memory_order_relaxed)) finish("control-ended");
-      if (edge && firstPlaybackState.load(std::memory_order_acquire)!=1) {
-        if (recording) finish("record-stop");
-        else if (opponentToggleTest.load(std::memory_order_relaxed)) {
+      if (recordFinishStartRequested.exchange(false,std::memory_order_acq_rel) && recording)
+        finish("record-stop-start");
+      if (edge && !recording && firstPlaybackState.load(std::memory_order_acquire)!=1) {
+        if (opponentToggleTest.load(std::memory_order_relaxed)) {
           firstPlaybackState.store(0,std::memory_order_release);
           firstPlaybackCount=0; firstPlaybackPosition=0; recording=true;
+          recordWaitingForRelease=true; // Ignore the initiating Select+X until both are released.
+          recordTimeRemainingMillis.store(30000,std::memory_order_release);
+          recordPauseRequestedOwner.store(0,std::memory_order_release);
           recordSlotRecording.store(true,std::memory_order_release);
           started=std::chrono::steady_clock::now(); log("record-start",0);
         } else if (firstPlaybackCount && !(std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK") && std::strcmp(std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK"),"1")==0)) {
@@ -363,9 +425,20 @@ void CapturePracticeHeld(PPCRegister &held)
       previousPlayCombo=playCombo;
       // END SLOT PLAYBACK SHORTCUT V1
       if (recording) {
-        if (std::chrono::steady_clock::now()-started>=std::chrono::seconds(30)) finish("time-limit");
+        const auto elapsedMs=std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now()-started).count();
+        const unsigned remaining=recordWaitingForRelease?30000u:
+          (elapsedMs>=30000?0u:static_cast<unsigned>(30000-elapsedMs));
+        recordTimeRemainingMillis.store(remaining,std::memory_order_release);
+        if(recordWaitingForRelease) {
+          if((held.u32 & 0x4020u)==0) {
+            recordWaitingForRelease=false;
+            started=std::chrono::steady_clock::now();
+            log("record-input-ready",0);
+          }
+        } else if (std::chrono::steady_clock::now()-started>=std::chrono::seconds(30)) finish("time-limit");
         else if (firstPlaybackCount>=1800) finish("sample-limit");
-        else firstPlaybackSamples[firstPlaybackCount++]=(held.u32 & 0x20u)?0:held.u32;
+        else firstPlaybackSamples[firstPlaybackCount++]=EncodeRecordPlaybackDirection((held.u32 & 0x20u)?0:held.u32);
       }
       if (firstPlaybackState.load(std::memory_order_acquire)==1) {
         if (opponentToggleTest.load(std::memory_order_relaxed)) {
@@ -877,9 +950,14 @@ void ApplyPracticeRageThreshold(
   threshold.u64 = health.u32;
 }
 
+void TrackRecordPlaybackWeight(PPCRegister& record, PPCRegister& value);
+void TrackRecordPlaybackRage(PPCRegister& record, PPCRegister& value); // RECORD MENU CONTROLS V1
+
 void TracePracticeMenuValue(
     PPCRegister &record, PPCRegister &value)
 {
+  TrackRecordPlaybackWeight(record,value);
+  TrackRecordPlaybackRage(record,value); // RECORD MENU CONTROLS V1
   if (!practiceRageOwner.load(std::memory_order_acquire))
     return;
 
@@ -974,25 +1052,29 @@ bool PrepareWeightedPlayback() {
  auto* base=memory();const auto records=practice_rage_menu_detail::menuRecords.load(std::memory_order_acquire);
  const auto c=base?context(base):0;const int selected=selectedRecordSlot.load(std::memory_order_acquire);
  const unsigned mode=recordWeightMenuMode.load(std::memory_order_acquire);
- if(!base||!records||!c||read(base,c)!=0x8207D3E4u||active()||selected>=3||mode>=3) return false;
+ if(!base||!records||!c||read(base,c)!=0x8207D3E4u||active()||selected>=static_cast<int>(kRecordSlotCount)||mode>=3) return false;
  if(selected<0 && !recordPlaybackModeActive.load(std::memory_order_acquire)) return false;
- unsigned weights[3]={},counts[3]={},total=0;
- for(unsigned i=0;i<3;++i) {
+ unsigned weights[kRecordSlotCount]={},counts[kRecordSlotCount]={},total=0;
+ for(unsigned i=0;i<kRecordSlotCount;++i) {
    counts[i]=i==static_cast<unsigned>(selected)?firstPlaybackCount:recordedSlotCounts[i];
-   const uint32_t row=quick_select_roster::recordWeightBase+mode*quick_select_roster::weightModeSize+i*quick_select_roster::weightGroupSize;
-   const uint32_t weight=read(base,records+row*96+80);
+   const uint32_t weight=recordPlaybackWeightSettings.values[mode][i];
    if(counts[i]>0 && counts[i]<=1800 && weight<=10) {weights[i]=weight;total+=weight;}
  }
  if(!total) {if(auto* f=std::fopen("weighted-playback-test.txt","a")){std::fprintf(f,"no-eligible mode=%u\n",mode);std::fclose(f);}return false;}
  static std::mt19937 rng(static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
  unsigned draw=std::uniform_int_distribution<unsigned>(0,total-1)(rng),chosen=0;
- for(;chosen<3;++chosen){if(draw<weights[chosen])break;draw-=weights[chosen];}
+ for(;chosen<kRecordSlotCount;++chosen){if(draw<weights[chosen])break;draw-=weights[chosen];}
  const uint32_t* source=chosen==static_cast<unsigned>(selected)?firstPlaybackSamples:recordedSlotSamples[chosen];
  weightedPlaybackCount=counts[chosen];std::memcpy(weightedPlaybackSamples,source,weightedPlaybackCount*sizeof(uint32_t));weightedPlaybackActive=true;
- if(auto* f=std::fopen("weighted-playback-test.txt","a")){std::fprintf(f,"mode=%u selected=%d played=%u weights=%u,%u,%u samples=%u\n",mode,selected+1,chosen+1,weights[0],weights[1],weights[2],weightedPlaybackCount);std::fclose(f);}
+ if(auto* f=std::fopen("weighted-playback-test.txt","a")) {
+   std::fprintf(f,"mode=%u selected=%d played=%u weights=",mode,selected+1,chosen+1);
+   for(unsigned i=0;i<kRecordSlotCount;++i) std::fprintf(f,"%s%u",i?",":"",weights[i]);
+   std::fprintf(f," samples=%u\n",weightedPlaybackCount);std::fclose(f);
+ }
  return true;
 }
 // BEGIN NATIVE DUMMY CONTROL TEST V1
+#include "tekken6_record_opponent_clear.inc" // RECORD OPPONENT CLEAR V1
 void NativeDummyControlTest(PPCRegister &selected, PPCRegister &owner) {
   using namespace quick_select_apply_detail;
   const char *enabled=std::getenv("TEKKEN6_TEST_OPPONENT_CONTROL");
@@ -1001,6 +1083,7 @@ void NativeDummyControlTest(PPCRegister &selected, PPCRegister &owner) {
   uint8_t *b=memory(); if(!b) return;
   const uint32_t c=context(b);
   if (!c || owner.u32!=c || read(b,c)!=0x8207D3E4u || active()) return;
+  ObserveRecordedOpponent(b,c); // RECORD OPPONENT CLEAR V1
   // BEGIN FIRST PLAYBACK NATIVE V1
   const char *play=std::getenv("TEKKEN6_TEST_FIRST_PLAYBACK");
   if (enabled && std::strcmp(enabled,"1")==0 && play && std::strcmp(play,"1")==0 &&
@@ -1076,3 +1159,19 @@ uint32_t GetPracticeWallStageId()
 
   return read(base, practiceContext + 352);
 }
+
+
+
+#include "tekken6_native_hud_layout.inc" // NATIVE HUD LAYOUT V1
+
+
+
+
+
+
+#include "tekken6_practice_prompt_widget.inc" // NATIVE PRACTICE PROMPT FRAME V1
+
+// FRAME DATA HUD V1
+#include "tekken6_frame_data_trace.inc"
+
+#include "tekken6_shared_action_probe.inc" // SHARED ACTION PROBE V1

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Experimental Mode Select row and cleanup for Record/Playback."""
+"""Experimental MODE SELECT row and cleanup for RECORD/PLAYBACK."""
 from pathlib import Path
 from datetime import datetime
 import argparse,shutil
@@ -13,10 +13,10 @@ r,m,q,c=names
 sub(r,'constexpr uint32_t totalCount=recordWeightBase+3*weightModeSize;','''// RECORD MODE SWITCH TEST V1: three mode-choice records per practice mode.
 constexpr uint32_t recordModeChoiceBase=recordWeightBase+3*weightModeSize;
 constexpr uint32_t totalCount=recordModeChoiceBase+9;''')
-sub(m,'const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};', '''// RECORD MODE SWITCH TEST V1: retain the existing menu without the opt-in flag.
+sub(m,'const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit RECORD/PLAYBACK"};', '''// RECORD MODE SWITCH TEST V1: retain the existing menu without the opt-in flag.
     const char* modeFlag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
     const bool modeEnabled=modeFlag && std::strcmp(modeFlag,"1")==0;
-    const char* label[]={"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};''')
+    const char* label[]={"Slot 1", "Slot 2", "Slot 3", "Exit RECORD/PLAYBACK"};''')
 sub(m,'parent[mode],(commandEnabled?5:4)+(weightedEnabled?3:0),root+1,quick,0);','parent[mode],4+(weightedEnabled?3:0),modeEnabled?root+4:root+1,quick,0);')
 old='''      for (uint32_t slot=0;slot<4;++slot)
         node(root+1+slot,346,label[slot],root,0,0,
@@ -28,8 +28,8 @@ old='''      for (uint32_t slot=0;slot<4;++slot)
 new='''      // RECORD MODE SWITCH TEST V1: mode choices precede the slot actions.
       if(modeEnabled) {
         const uint32_t choices=recordModeChoiceBase+mode*3;
-        const char* modeLabels[]={"Free Style", "VS CPU Training", "Defensive Training"};
-        node(root+4,297,"Mode Select",root,3,choices,0,root+1);
+        const char* modeLabels[]={"FREE STYLE", "VS CPU Training", "DEFENSIVE TRAINING"};
+        node(root+4,297,"MODE SELECT",root,3,choices,0,root+1);
         for(uint32_t option=0;option<3;++option)
           node(choices+option,346,modeLabels[option],root+4,0,0,
                option?choices+option-1:0,option<2?choices+option+1:0);
@@ -78,7 +78,7 @@ insert=''' // RECORD MODE SWITCH TEST V1: handle new mode choices and native mod
        if(std::FILE* f=std::fopen("record-mode-test.txt","a")) {
          std::fprintf(f,"from=%u target=%u native=%u saved_slot=%d samples=%u\\n",from,target,action,prev,firstPlaybackCount);std::fclose(f);
        }
-       // Current-mode choice only exits Record/Playback; other choices use the native callback.
+       // Current-mode choice only exits RECORD/PLAYBACK; other choices use the native callback.
        if(action) id.u64=action;
        return;
      }

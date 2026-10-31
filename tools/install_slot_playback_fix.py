@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add Select+B playback to the opt-in Record/Playback slots test."""
+"""Add Select+B playback to the opt-in RECORD/PLAYBACK slots test."""
 from pathlib import Path
 from datetime import datetime
 import argparse,shutil

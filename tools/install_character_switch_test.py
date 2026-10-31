@@ -61,14 +61,14 @@ def main():
         if INCLUDE in cpp or CALL in cpp:
             raise SystemExit('Partial installation; run --remove, then reinstall.')
         if '[functions]' not in cfg or 'TraceQuickSelectPractice' not in cfg:
-            raise SystemExit('The existing Quick Select trace is required.')
+            raise SystemExit('The existing QUICK SELECT trace is required.')
         if 'practiceRageOwner' not in (root / 'src/tekken6_guest_hooks.cpp').read_text():
             raise SystemExit('Practice owner tracking is required.')
         if not (root / 'src/tekken6_quick_select_character_test.inc').is_file():
             raise SystemExit('Missing character test include; extract the complete ZIP.')
         needle = '  const uint32_t n = id.u32;'
         if cpp.count(needle) != 1 or '#pragma once\n' not in cpp:
-            raise SystemExit('Expected Quick Select trace source was not found.')
+            raise SystemExit('Expected QUICK SELECT trace source was not found.')
         # Disable the earlier one-time stage override, preserving passive stage diagnostics.
         stage_pattern = r'(?m)^# BEGIN QUICK SELECT STAGE SWITCH TEST\n.*?^# END QUICK SELECT STAGE SWITCH TEST\n?'
         stage = re.search(stage_pattern, cfg, re.S)

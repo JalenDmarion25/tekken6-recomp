@@ -76,14 +76,23 @@ constexpr uint32_t originalTotalCount=stageFirst+stageCount;
 constexpr uint32_t subtreeSize=originalTotalCount-502;
 // RECORD SLOTS MENU TEST V1: 3 menus, each with 4 action records.
 constexpr uint32_t recordSlotBase=originalTotalCount+2*subtreeSize;
-constexpr uint32_t recordSlotStride=6; // COMMAND MENU PROBE V1
+// EIGHT RECORD SLOTS V1: root, eight slots, MODE SELECT, PLAYBACK WEIGHTS.
+constexpr uint32_t recordSlotCount=8;
+constexpr uint32_t recordModeOffset=recordSlotCount+1, recordWeightsOffset=recordSlotCount+2;
+constexpr uint32_t recordSlotStride=recordSlotCount+3;
 // WEIGHTED PLAYBACK TEST V1: three menus, three weights, eleven values each.
 constexpr uint32_t recordWeightBase=recordSlotBase+3*recordSlotStride;
-constexpr uint32_t weightOptionCount=11, weightGroupSize=12, weightModeSize=36;
+constexpr uint32_t weightOptionCount=11, weightGroupSize=12;
+constexpr uint32_t weightModeSize=recordSlotCount*weightGroupSize;
 // RECORD MODE SWITCH TEST V1: three mode-choice records per practice mode.
 constexpr uint32_t recordModeChoiceBase=recordWeightBase+3*weightModeSize;
-// RECORD MODE FIX V1: separate Quick Select copies for the Record/Playback panel.
+// RECORD MODE FIX V1: separate QUICK SELECT copies for the RECORD/PLAYBACK panel.
 constexpr uint32_t recordQuickBase=recordModeChoiceBase+9;
-constexpr uint32_t totalCount=recordQuickBase+3*subtreeSize;
+// RECORD MENU CONTROLS V1: append rows without changing existing slot IDs.
+constexpr uint32_t recordExtrasBase=recordQuickBase+3*subtreeSize;
+constexpr uint32_t recordExtrasStride=9;
+// RECORD RESET TOGGLE V1: append two options per menu without moving existing IDs.
+constexpr uint32_t recordResetOptionsBase=recordExtrasBase+3*recordExtrasStride;
+constexpr uint32_t totalCount=recordResetOptionsBase+6;
 constexpr uint32_t stringBudget=4096;
 }

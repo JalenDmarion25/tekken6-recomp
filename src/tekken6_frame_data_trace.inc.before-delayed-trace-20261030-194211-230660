@@ -1,0 +1,23 @@
+#pragma once
+bool TekkenFrameDataPracticeActive(){return practiceRageOwner.load(std::memory_order_acquire)!=0;}
+void CaptureTekkenFrameDataCandidates(uint32_t held) {
+  const char* enabled=std::getenv("TEKKEN6_TRACE_FRAME_DATA");
+  if(!enabled || std::strcmp(enabled,"1") || !TekkenFrameDataPracticeActive())return;
+  auto* runtime=rex::Runtime::instance();auto* p=runtime?runtime->virtual_membase():nullptr;if(!p)return;
+  static std::mutex mutex;std::lock_guard<std::mutex> lock(mutex);
+  static bool started=false;static unsigned count=0;
+  // Explicit arming avoids spending the sample budget on menu confirmations.
+  if(!started){if((held&0x8020u)!=0x8020u)return;started=true;}
+  if(count>=2400)return;
+  static std::FILE* f=std::fopen("practice-frame-data-trace.txt","w");if(!f)return;
+  auto word=[&](uint32_t a){return uint32_t(p[a])<<24|uint32_t(p[a+1])<<16|uint32_t(p[a+2])<<8|p[a+3];};
+  if(!count)std::fprintf(f,"FRAME DATA CANDIDATES V1: input-hook samples, NOT confirmed simulation frames.\nEach fighter line: 144 big-endian words, offsets 000..23C step 4. No timing field semantics assumed.\n");
+  const auto us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+  std::fprintf(f,"sample=%u host_us=%lld held=%08X owner=%08X\n",++count,static_cast<long long>(us),held,practiceRageOwner.load());
+  for(uint32_t a:{0x82900C00u,0x82901840u}) {
+    std::fprintf(f,"%08X",a);
+    for(unsigned off=0;off<0x240;off+=4)std::fprintf(f," %08X",word(a+off));
+    std::fputc('\n',f);
+  }
+  if(count%60==0 || count==2400)std::fflush(f);
+}

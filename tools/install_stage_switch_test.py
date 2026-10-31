@@ -55,14 +55,14 @@ def main():
         cpp2 = cpp.replace(INCLUDE + '\n', '').replace(CALL + '\n', '')
     else:
         if '[functions]' not in cfg or 'TraceQuickSelectPractice' not in cfg:
-            raise SystemExit('The installed Quick Select trace configuration is required.')
+            raise SystemExit('The installed QUICK SELECT trace configuration is required.')
         if not (root / 'src/tekken6_quick_select_stage_test.inc').is_file():
             raise SystemExit('Missing stage test include; extract the complete ZIP.')
         if 'practiceRageOwner' not in (root / 'src/tekken6_guest_hooks.cpp').read_text():
             raise SystemExit('Practice owner tracking is required.')
         needle = '  const uint32_t n = id.u32;'
         if cpp.count(needle) != 1 or '#pragma once\n' not in cpp:
-            raise SystemExit('Expected Quick Select trace implementation was not found.')
+            raise SystemExit('Expected QUICK SELECT trace implementation was not found.')
         if match:
             content = match[0].replace(BEGIN + '\n', '', 1).replace(END, '').strip()
             if content not in [HOOK.strip(), OLD_HOOK.strip()]:

@@ -1,0 +1,54 @@
+{
+  "patches": {
+    "src/tekken6_quick_select_roster.inc": [
+      [
+        "constexpr uint32_t totalCount=recordQuickBase+3*subtreeSize;",
+        "// RECORD MENU CONTROLS V1: append rows without changing existing slot IDs.\nconstexpr uint32_t recordExtrasBase=recordQuickBase+3*subtreeSize;\nconstexpr uint32_t recordExtrasStride=9;\nconstexpr uint32_t totalCount=recordExtrasBase+3*recordExtrasStride;"
+      ]
+    ],
+    "src/tekken6_quick_select_menu_records.inc": [
+      [
+        "      }\n    }\n  }\n}\n",
+        "      }\n      // RECORD MENU CONTROLS V1: five more root rows, fifteen with weights.\n      if(modeEnabled) {\n        const uint32_t first=recordExtrasBase+mode*recordExtrasStride;\n        const uint32_t tail=weightedEnabled?root+recordWeightsOffset:root+recordSlotCount;\n        write(base,records+root*recordSize+8,recordSlotCount+1+(weightedEnabled?1:0)+5);\n        write(base,records+tail*recordSize+24,first);\n        node(first,300,\"POSITION RESET\",root,0,0,tail,first+1);\n        node(first+1,323,\"PLAYER RAGE\",root,2,first+2,first,first+4);\n        node(first+2,324,\"Off\",first+1,0,0,0,first+3);\n        node(first+3,325,\"On\",first+1,0,0,first+2,0);\n        node(first+4,323,\"OPPONENT RAGE\",root,2,first+5,first+1,first+7);\n        node(first+5,324,\"Off\",first+4,0,0,0,first+6);\n        node(first+6,325,\"On\",first+4,0,0,first+5,0);\n        node(first+7,346,\"CHARACTER SELECT\",root,0,0,first+4,first+8);\n        node(first+8,347,\"RETURN TO MAIN MENU\",root,0,0,first+7,0);\n        write(base,records+(first+1)*recordSize+80,read(base,records+496*recordSize+80));\n        write(base,records+(first+4)*recordSize+80,read(base,records+499*recordSize+80));\n      }\n    }\n  }\n}\n"
+      ]
+    ],
+    "src/tekken6_quick_select_apply.inc": [
+      [
+        "void QuickSelectSyncMenu(PPCRegister& object) {",
+        "#include \"tekken6_record_menu_controls.inc\" // RECORD MENU CONTROLS V1\nvoid QuickSelectSyncMenu(PPCRegister& object) {"
+      ],
+      [
+        " SyncRecordPlaybackWeights(b,c,object.u32,records);",
+        " SyncRecordPlaybackWeights(b,c,object.u32,records);\n SyncRecordPlaybackRage(b,c,object.u32,records);"
+      ],
+      [
+        "void QuickSelectApplyAction(PPCRegister& object,PPCRegister& id) {",
+        "void QuickSelectApplyAction(PPCRegister& object,PPCRegister& id) {\n RouteRecordPlaybackControlAction(object,id); // RECORD MENU CONTROLS V1"
+      ],
+      [
+        "id.u32==383 || id.u32==384;",
+        "id.u32==383 || id.u32==384 || id.u32==346 || id.u32==347; // RECORD MENU CONTROLS V1"
+      ]
+    ],
+    "src/tekken6_guest_hooks.cpp": [
+      [
+        "void TrackRecordPlaybackWeight(PPCRegister& record, PPCRegister& value);",
+        "void TrackRecordPlaybackWeight(PPCRegister& record, PPCRegister& value);\nvoid TrackRecordPlaybackRage(PPCRegister& record, PPCRegister& value); // RECORD MENU CONTROLS V1"
+      ],
+      [
+        "  TrackRecordPlaybackWeight(record,value);",
+        "  TrackRecordPlaybackWeight(record,value);\n  TrackRecordPlaybackRage(record,value); // RECORD MENU CONTROLS V1"
+      ]
+    ],
+    "src/tekken6_app.h": [
+      [
+        "    ImGui::SetNextWindowBgAlpha(0.80f);",
+        "    // RECORD MENU CONTROLS V1: translucent navy blue, white HUD text.\n    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(0.02f,0.06f,0.18f,0.65f));\n    ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(1.0f,1.0f,1.0f,1.0f));\n    ImGui::SetNextWindowBgAlpha(0.65f);"
+      ],
+      [
+        "    ImGui::End();\n    if(recordFont_) ImGui::PopFont();",
+        "    ImGui::End();\n    ImGui::PopStyleColor(2); // RECORD MENU CONTROLS V1\n    if(recordFont_) ImGui::PopFont();"
+      ]
+    ]
+  }
+}

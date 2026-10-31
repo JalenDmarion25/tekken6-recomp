@@ -318,6 +318,79 @@ address = 0x823928A8
 name = "NativeDummyControlTest"
 registers = ["r4", "r30"]
 # END NATIVE DUMMY CONTROL TEST V1
+
+# BEGIN RECORD FLOW V1
+[[midasm_hook]]
+address = 0x8238DD70
+name = "BeginRecordMenuCloseQuery"
+registers = ["r3"]
+
+[[midasm_hook]]
+address = 0x8238DDF0
+name = "FinishRecordMenuCloseQuery"
+registers = ["r3"]
+# END RECORD FLOW V1
+
+
+# BEGIN RECORD HUD FINISH V1
+[[midasm_hook]]
+address = 0x8238EFBC
+name = "RecordFinishPauseInput"
+registers = ["r3", "r25", "r31"]
+
+[[midasm_hook]]
+address = 0x824631B8
+name = "HideRecordControllerPrompt"
+registers = ["r3"]
+# END RECORD HUD FINISH V1
+
+
+# BEGIN RECORD MENU NAVIGATION V1
+[[midasm_hook]]
+address = 0x82268108
+name = "ObserveRecordingStartRelease"
+registers = ["r3"]
+
+[[midasm_hook]]
+address = 0x824365E0
+name = "GuardRecordPlaybackRootBack"
+registers = ["r26", "r30"]
+# END RECORD MENU NAVIGATION V1
+
+
+# BEGIN NATIVE PRACTICE HUD TRACE V1
+[[midasm_hook]]
+address = 0x823612D4
+name = "AdjustNativePracticeHud"
+registers = ["r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12"]
+# END NATIVE PRACTICE HUD TRACE V1
+
+
+# BEGIN NATIVE HUD OBJECT TRACE V2
+# BEGIN NATIVE PRACTICE PROMPT FRAME V1
+[[midasm_hook]]
+address = 0x8236AAAC
+name = "MoveNativePracticePromptFrame"
+registers = ["r31", "r22", "r23"]
+# END NATIVE PRACTICE PROMPT FRAME V1
+
+# BEGIN SHARED ACTION PROBE V1
+[[midasm_hook]]
+address = 0x822871D0
+name = "ProbeTekkenNativeSelector"
+registers = ["r31", "r3"]
+
+[[midasm_hook]]
+address = 0x8228772C
+name = "ProbeTekkenNativeScheduler"
+registers = ["r31"]
+
+[[midasm_hook]]
+address = 0x82288234
+name = "ProbeTekkenNativeCommit"
+registers = ["r30"]
+# END SHARED ACTION PROBE V1
+
 [functions]
 # These vector state helpers are high-call-count, audited leaf routines. Their
 # non-volatile VMX register values are copied into locals and written back at

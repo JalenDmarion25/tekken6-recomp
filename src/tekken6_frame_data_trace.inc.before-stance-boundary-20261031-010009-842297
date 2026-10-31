@@ -1,0 +1,3 @@
+// FRAME DATA PER CONTACT V2
+#pragma once
+#include "tekken6_frame_data_contacts_live.inc"

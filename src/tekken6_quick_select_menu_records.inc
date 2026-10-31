@@ -1,4 +1,4 @@
-// Native Quick Select records for the experimental Apply build.
+// Native QUICK SELECT records for the experimental Apply build.
 #pragma once
 #include <cstdint>
 #include "tekken6_quick_select_roster.inc"
@@ -50,7 +50,7 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
       write(base, entry + field * 4, minusOne);
   };
   using namespace quick_select_roster;
-  node(quickRow, 297, "Quick Select", 297, 4, playerRow, 299, 0);
+  node(quickRow, 297, "QUICK SELECT", 297, 4, playerRow, 299, 0);
   node(playerRow, 323, "Player", quickRow, fighterCount, playerFirst, 0, opponentRow);
   node(opponentRow, 323, "Opponent", quickRow, fighterCount, opponentFirst, playerRow, stageRow);
   node(stageRow, 323, "Stage", quickRow, stageCount, stageFirst, opponentRow, applyRow);
@@ -99,7 +99,7 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
   if (slotsTest && std::strcmp(slotsTest,"1")==0) {
     // COMMAND MENU PROBE V1: preserve the normal slot layout unless opted in.
     // LOOP PLAYBACK TEST V1: do not add the command-list entry.
-    const bool commandEnabled=false; // RECORD MODE SWITCH TEST V1
+    // EIGHT RECORD SLOTS V1: obsolete command-list row is not allocated.
     // WEIGHTED PLAYBACK TEST V1
     const char* weightedTest=std::getenv("TEKKEN6_TEST_WEIGHTED_PLAYBACK");
     const bool weightedEnabled=weightedTest && std::strcmp(weightedTest,"1")==0;
@@ -107,21 +107,21 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
     // RECORD MODE SWITCH TEST V1: retain the existing menu without the opt-in flag.
     const char* modeFlag=std::getenv("TEKKEN6_TEST_RECORD_MODE");
     const bool modeEnabled=modeFlag && std::strcmp(modeFlag,"1")==0;
-    const char* label[]={"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};
+    const char* label[]={"Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5", "Slot 6", "Slot 7", "Slot 8", "Exit RECORD/PLAYBACK"};
     for (uint32_t mode=0; mode<3; ++mode) {
       const uint32_t root=recordSlotBase+mode*recordSlotStride;
       const uint32_t quick=quickRow+mode*subtreeSize;
-      node(root,297,"Record/Playback",parent[mode],4+(weightedEnabled?3:0),modeEnabled?root+4:root+1,quick,0);
+      node(root,297,"RECORD/PLAYBACK",parent[mode],recordSlotCount+1+(weightedEnabled?1:0),modeEnabled?root+recordModeOffset:root+1,quick,0);
       write(base,records+quick*recordSize+24,root);
       write(base,records+parent[mode]*recordSize+8,4);
       // RECORD MODE SWITCH TEST V1: mode choices precede the slot actions.
       if(modeEnabled) {
         const uint32_t choices=recordModeChoiceBase+mode*3;
-        const char* modeLabels[]={"Free Style", "VS CPU Training", "Defensive Training"};
-        // RECORD MODE FIX V1: fourth choice opens an independently linked Quick Select.
-        node(root+4,297,"Mode Select",root,4,choices,0,root+1);
+        const char* modeLabels[]={"FREE STYLE", "VS CPU Training", "DEFENSIVE TRAINING"};
+        // RECORD MODE FIX V1: fourth choice opens an independently linked QUICK SELECT.
+        node(root+recordModeOffset,297,"MODE SELECT",root,4,choices,0,root+1);
         for(uint32_t option=0;option<3;++option)
-          node(choices+option,346,modeLabels[option],root+4,0,0,
+          node(choices+option,346,modeLabels[option],root+recordModeOffset,0,0,
                option?choices+option-1:0,option<2?choices+option+1:recordQuickBase+mode*subtreeSize);
         const uint32_t srcRoot=quickRow+mode*subtreeSize;
         const uint32_t dstRoot=recordQuickBase+mode*subtreeSize;
@@ -135,31 +135,57 @@ void InstallPracticeQuickSelectRecords(uint8_t* base, uint32_t records,
             if(value>=srcRoot && value<srcRoot+subtreeSize) write(base,dst+offset,dstRoot+(value-srcRoot));
           }
         }
-        write(base,records+dstRoot*recordSize+4,root+4);
+        write(base,records+dstRoot*recordSize+4,root+recordModeOffset);
         write(base,records+dstRoot*recordSize+20,choices+2);
         write(base,records+dstRoot*recordSize+24,0);
-        for (uint32_t slot=0;slot<3;++slot)
+        for (uint32_t slot=0;slot<recordSlotCount;++slot)
           node(root+1+slot,346,label[slot],root,0,0,
-               slot?root+slot:root+4,slot<2?root+2+slot:0);
+               slot?root+slot:root+recordModeOffset,slot+1<recordSlotCount?root+2+slot:0);
       } else {
-        for(uint32_t slot=0;slot<4;++slot)
+        for(uint32_t slot=0;slot<recordSlotCount+1;++slot)
           node(root+1+slot,346,label[slot],root,0,0,
-               slot?root+slot:0,slot<3?root+2+slot:0);
+               slot?root+slot:0,slot<recordSlotCount?root+2+slot:0);
       }
       if(weightedEnabled) {
         const uint32_t first=recordWeightBase+mode*weightModeSize;
-        const uint32_t tail=root+(modeEnabled?3:4);
-        const char* weightLabels[]={"Slot 1 weight", "Slot 2 weight", "Slot 3 weight"};
+        const uint32_t tail=root+(modeEnabled?recordSlotCount:recordModeOffset);
+        const uint32_t weightsRoot=root+recordWeightsOffset;
+        const char* weightLabels[]={"Slot 1 weight", "Slot 2 weight", "Slot 3 weight", "Slot 4 weight", "Slot 5 weight", "Slot 6 weight", "Slot 7 weight", "Slot 8 weight"};
         const char* values[]={"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"};
-        write(base,records+tail*recordSize+24,first);
-        for(uint32_t slot=0;slot<3;++slot) {
+        write(base,records+tail*recordSize+24,weightsRoot);
+        node(weightsRoot,297,"PLAYBACK WEIGHTS",root,recordSlotCount,first,tail,0);
+        for(uint32_t slot=0;slot<recordSlotCount;++slot) {
           const uint32_t row=first+slot*weightGroupSize;
-          node(row,323,weightLabels[slot],root,weightOptionCount,row+1,
-               slot?row-weightGroupSize:tail,slot<2?row+weightGroupSize:0);
-          write(base,records+row*recordSize+80,1); // Equal default weights.
+          node(row,323,weightLabels[slot],weightsRoot,weightOptionCount,row+1,
+               slot?row-weightGroupSize:0,slot+1<recordSlotCount?row+weightGroupSize:0);
+          write(base,records+row*recordSize+80,10); // EIGHT RECORD SLOTS V1: equal default weight 10.
           for(uint32_t v=0;v<weightOptionCount;++v)
             node(row+1+v,324,values[v],row,0,0,v?row+v:0,v+1<weightOptionCount?row+v+2:0);
         }
+      }
+      // RECORD MENU CONTROLS V1: five more root rows, fifteen with weights.
+      if(modeEnabled) {
+        const uint32_t first=recordExtrasBase+mode*recordExtrasStride;
+        const uint32_t tail=weightedEnabled?root+recordWeightsOffset:root+recordSlotCount;
+        write(base,records+root*recordSize+8,recordSlotCount+1+(weightedEnabled?1:0)+5);
+        write(base,records+tail*recordSize+24,first);
+        // RECORD RESET TOGGLE V1: native selector 332; value 0 Off, 1 ON.
+        const uint32_t resetOptions=recordResetOptionsBase+mode*2;
+        const uint32_t nativeResetRows[]={332,364,397};
+        node(first,332,"POSITION RESET",root,2,resetOptions,tail,first+1);
+        node(resetOptions,333,"OFF",first,0,0,0,resetOptions+1);
+        node(resetOptions+1,334,"ON",first,0,0,resetOptions,0);
+        write(base,records+first*recordSize+80,read(base,records+nativeResetRows[mode]*recordSize+80));
+        node(first+1,323,"PLAYER RAGE",root,2,first+2,first,first+4);
+        node(first+2,324,"OFF",first+1,0,0,0,first+3);
+        node(first+3,325,"ON",first+1,0,0,first+2,0);
+        node(first+4,323,"OPPONENT RAGE",root,2,first+5,first+1,first+7);
+        node(first+5,324,"OFF",first+4,0,0,0,first+6);
+        node(first+6,325,"ON",first+4,0,0,first+5,0);
+        node(first+7,346,"CHARACTER SELECT",root,0,0,first+4,first+8);
+        node(first+8,347,"RETURN TO MAIN MENU",root,0,0,first+7,0);
+        write(base,records+(first+1)*recordSize+80,read(base,records+496*recordSize+80));
+        write(base,records+(first+4)*recordSize+80,read(base,records+499*recordSize+80));
       }
     }
   }

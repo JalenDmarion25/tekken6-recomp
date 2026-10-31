@@ -20,40 +20,59 @@ void InstallTekken6CrashReport();
 #include <cstring>
 #include <rex/ui/imgui_dialog.h>
 #include <imgui.h>
+#include "tekken6_record_hud_font.inc" // RECORD HUD FONT V1
 extern std::atomic<int> selectedRecordSlot;
 extern std::atomic<bool> recordSlotActive;
 extern std::atomic<bool> recordPlaybackModeActive;
 extern std::atomic<bool> recordSlotRecording;
+extern std::atomic<unsigned> recordTimeRemainingMillis; // RECORD HUD FINISH V1
 extern std::atomic<bool> opponentToggleTest;
 extern std::atomic<unsigned> firstPlaybackState;
 
 class TekkenRecordHud final : public rex::ui::ImGuiDialog {
+  ImFont* recordFont_=nullptr;
  public:
-  explicit TekkenRecordHud(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+  explicit TekkenRecordHud(rex::ui::ImGuiDrawer* drawer,ImFont* font) : ImGuiDialog(drawer),recordFont_(font) {}
  protected:
   void OnDraw(ImGuiIO& io) override {
     const int slot=selectedRecordSlot.load(std::memory_order_acquire);
-    const bool hasSlot=slot>=0 && slot<3 && recordSlotActive.load(std::memory_order_acquire);
+    const bool hasSlot=slot>=0 && slot<8 && recordSlotActive.load(std::memory_order_acquire);
     if(!hasSlot && !recordPlaybackModeActive.load(std::memory_order_acquire)) return;
     const bool recording=recordSlotRecording.load(std::memory_order_acquire);
     const bool controlling=opponentToggleTest.load(std::memory_order_relaxed);
     const bool playing=firstPlaybackState.load(std::memory_order_acquire)==1;
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x*0.5f,io.DisplaySize.y*0.82f),ImGuiCond_Always,ImVec2(0.5f,0.5f));
-    ImGui::SetNextWindowBgAlpha(0.80f);
+    if(recordFont_) ImGui::PushFont(recordFont_); // RECORD HUD FONT V1
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x*0.5f,io.DisplaySize.y*0.17f),ImGuiCond_Always,ImVec2(0.5f,0.0f));
+    // RECORD MENU CONTROLS V1: translucent navy blue, white HUD text.
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(0.02f,0.06f,0.18f,0.65f));
+    ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(1.0f,1.0f,1.0f,1.0f));
+    // RECORD RESET TOGGLE V1: replace the inherited green outline.
+    ImGui::PushStyleColor(ImGuiCol_Border,ImVec4(0.01f,0.025f,0.08f,0.95f));
+    ImGui::PushStyleColor(ImGuiCol_BorderShadow,ImVec4(0.0f,0.01f,0.04f,0.40f));
+    ImGui::SetNextWindowBgAlpha(0.65f);
     ImGuiWindowFlags flags=ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_AlwaysAutoResize|
       ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoInputs;
     if(ImGui::Begin("##tekken_record_hud",nullptr,flags)) {
+      // RECORD HUD FINISH V1: countdown begins after the start chord is released.
       if(hasSlot) ImGui::Text("SLOT %d",slot+1);
       else ImGui::TextUnformatted("RECORD/PLAYBACK");
-      if(recording) ImGui::TextUnformatted("Select + X: Finish recording");
+      if(recording) ImGui::TextUnformatted("Start: Finish recording");
       else if(playing) ImGui::TextUnformatted("Select + B: Stop playback"); // LOOP PLAYBACK TEST V1
       else if(controlling) ImGui::TextUnformatted("Select + X: Start recording");
       else ImGui::TextUnformatted("Select + B: Play recording");
+      if(recording) {
+        const unsigned ms=recordTimeRemainingMillis.load(std::memory_order_acquire);
+        ImGui::Text("Time left: %.1f s",static_cast<double>(ms)/1000.0);
+      }
     }
     ImGui::End();
+    ImGui::PopStyleColor(4); // RECORD RESET TOGGLE V1
+    if(recordFont_) ImGui::PopFont(); // RECORD HUD FONT V1
   }
 };
 // END RECORD HUD TEST V1
+// FRAME DATA HUD V1
+#include "tekken6_frame_data_hud.inc"
 class Tekken6App final : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -65,13 +84,22 @@ class Tekken6App final : public rex::ReXApp {
   }
 
  protected:
+  void OnConfigureFonts(ImFontAtlas* atlas) override {
+    rex::ReXApp::OnConfigureFonts(atlas);
+    const char* enabled=std::getenv("TEKKEN6_TEST_RECORD_HUD");
+    if((enabled && std::strcmp(enabled,"1")==0) || std::getenv("TEKKEN6_TEST_FRAME_DATA_HUD"))
+      recordHudFont_=tekken_record_hud_font::Load(atlas);
+  }
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
     rex::ReXApp::OnCreateDialogs(drawer);
     // BEGIN RECORD HUD CREATE V1
     const char* recordHudTest=std::getenv("TEKKEN6_TEST_RECORD_HUD");
     if(drawer && recordHudTest && std::strcmp(recordHudTest,"1")==0)
-      recordHud_=std::make_unique<TekkenRecordHud>(drawer);
+      recordHud_=std::make_unique<TekkenRecordHud>(drawer,recordHudFont_);
     // END RECORD HUD CREATE V1
+    const char* frameFlag=std::getenv("TEKKEN6_TEST_FRAME_DATA_HUD");
+    if(drawer && frameFlag && std::strcmp(frameFlag,"1")==0)
+      frameDataHud_=std::make_unique<TekkenFrameDataHud>(drawer,recordHudFont_);
     SetGuestFrameStats([this] {
       const auto* app_runtime = runtime();
       const auto* graphics = app_runtime ? app_runtime->graphics_system() : nullptr;
@@ -504,7 +532,9 @@ class Tekken6App final : public rex::ReXApp {
 
  private:
   // BEGIN RECORD HUD MEMBER V1
+  ImFont* recordHudFont_=nullptr; // RECORD HUD FONT V1
   std::unique_ptr<TekkenRecordHud> recordHud_;
+  std::unique_ptr<TekkenFrameDataHud> frameDataHud_;
   // END RECORD HUD MEMBER V1
   template <uint32_t Address, uint32_t SlotOffset,
             uint32_t VtableRegister = 12, uint32_t MethodRegister = 11>

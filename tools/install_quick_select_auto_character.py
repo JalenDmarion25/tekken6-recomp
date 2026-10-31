@@ -1,4 +1,4 @@
-"""Add one native character-confirmation hook to an existing Quick Select Apply install."""
+"""Add one native character-confirmation hook to an existing QUICK SELECT Apply install."""
 import argparse
 import datetime
 from pathlib import Path

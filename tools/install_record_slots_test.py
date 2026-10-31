@@ -26,11 +26,11 @@ new='''    write(base, records + tails[mode] * recordSize + 24, quickRow + delta
   const char* slotsTest=std::getenv("TEKKEN6_TEST_RECORD_SLOTS");
   if (slotsTest && std::strcmp(slotsTest,"1")==0) {
     const uint32_t parent[] = {297,350,382};
-    const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit Record/Playback"};
+    const char* label[] = {"Slot 1", "Slot 2", "Slot 3", "Exit RECORD/PLAYBACK"};
     for (uint32_t mode=0; mode<3; ++mode) {
       const uint32_t root=recordSlotBase+mode*recordSlotStride;
       const uint32_t quick=quickRow+mode*subtreeSize;
-      node(root,297,"Record/Playback",parent[mode],4,root+1,quick,0);
+      node(root,297,"RECORD/PLAYBACK",parent[mode],4,root+1,quick,0);
       write(base,records+quick*recordSize+24,root);
       write(base,records+parent[mode]*recordSize+8,4);
       for (uint32_t slot=0;slot<4;++slot)
@@ -112,4 +112,4 @@ replace(apply,needle,replacement)
 stamp=datetime.now().strftime('%Y%m%d-%H%M%S-%f')
 for name in names:
  f=root/name;shutil.copy2(f,f.with_name(f.name+'.before-record-slots-'+stamp));f.write_text(files[name],encoding='utf-8',newline='\n')
-print('Installed experimental Record/Playback menu. Backups use suffix .before-record-slots-'+stamp)
+print('Installed experimental RECORD/PLAYBACK menu. Backups use suffix .before-record-slots-'+stamp)

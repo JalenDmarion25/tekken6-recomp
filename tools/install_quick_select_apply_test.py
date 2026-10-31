@@ -1,4 +1,4 @@
-"""Upgrade the installed Quick Select layout to the experimental native Apply test."""
+"""Upgrade the installed QUICK SELECT layout to the experimental native Apply test."""
 import argparse
 import datetime
 from pathlib import Path
@@ -60,7 +60,7 @@ def main():
             if END not in cfg or INCLUDE not in cpp or 'totalCount = 520;' not in rage:raise SystemExit('Partial Apply installation; restore backups.')
             print('Apply test is already installed.');return
         if INCLUDE in cpp:raise SystemExit('Partial Apply installation; restore backups.')
-        if 'totalCount = 516;' not in rage or 'InstallPracticeQuickSelectRecords' not in rage:raise SystemExit('Install the previous Quick Select menu layout first.')
+        if 'totalCount = 516;' not in rage or 'InstallPracticeQuickSelectRecords' not in rage:raise SystemExit('Install the previous QUICK SELECT menu layout first.')
         for name in ['tekken6_quick_select_apply.inc','tekken6_quick_select_menu_records.inc']:
             if not (root/'src'/name).exists():raise SystemExit('Extract the complete test ZIP first.')
         used={int(a,16) for a in re.findall(r'(?im)^address\s*=\s*0x([0-9a-f]+)\s*$',cfg)}
